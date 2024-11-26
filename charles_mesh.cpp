@@ -1,37 +1,15 @@
+#include <string>
+#include <filesystem>
+
 #include "charles_mesh.h"
 
 namespace
 {
 
-class Point3D
+void init_mesh(const std::string& mesh_path)
 {
-public:
-    double x, y, z;
-};
-
-class HalfEdge;
-
-class Vertex
-{
-public:
-    Point3D position;
-    HalfEdge* half_edge;
-};
-
-class Face
-{
-public:
-    HalfEdge* half_edge;
-};
-
-class HalfEdge
-{
-public:
-    Vertex* vertex;
-    Face* face;
-    HalfEdge* next;
-    HalfEdge* prev;
-    HalfEdge* opposite;
-};
+    std::filesystem::path fp_mesh_path{mesh_path};
+    auto file_extension = fp_mesh_path.extension().string();
+}
 
 };
