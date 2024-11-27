@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <queue>
+#include <iomanip>
+#include <numeric>
 
 namespace charles_mesh
 {
@@ -118,6 +120,7 @@ void ObjMeshIO::save_mesh(const std::string& mesh_dir, const std::string& mesh_n
         std::cerr << "Error opening file for writing: " << mesh_path << std::endl;
         return;
     }
+    file << std::fixed << std::setprecision(std::numeric_limits<double>::digits10);
     for(unsigned int i = 0; i < vertex_count; i++)
     {
         auto vertex = vertex_index_map.at(i);
