@@ -67,6 +67,11 @@ void ObjMeshIO::save_mesh(const std::string& mesh_dir, const std::string& mesh_n
         auto e_start = edge_queue.front();
         auto e_iter = e_start;
         edge_queue.pop();
+        // still need to check if it is iterated, because it can be iterated by other edge from same face.
+        if(edge_cache.contains(e_iter))
+        {
+            continue;
+        }
         edge_queue_current.erase(e_iter);
         do
         {
