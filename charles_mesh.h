@@ -48,6 +48,10 @@ public:
     std::shared_ptr<Vertex>   v_head;
     std::shared_ptr<HalfEdge> e_head;
     std::shared_ptr<Face>     f_head;
+public:
+    Mesh() = default;
+    Mesh(const std::string& mesh_file_path) = delete;
+    Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons);
 };
 
 };
