@@ -52,6 +52,8 @@ public:
     Mesh() = default;
     Mesh(const std::string& mesh_file_path) = delete;
     Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons);
+public:
+    void edge_flip(std::shared_ptr<HalfEdge> he);
 };
 
 };

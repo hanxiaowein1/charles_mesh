@@ -167,8 +167,11 @@ std::shared_ptr<Mesh> ObjMeshIO::load_mesh(const std::string& mesh_path)
             std::shared_ptr<HalfEdge> he3(new HalfEdge());
 
             he1->vertex = mesh->vertices[v1 - 1];
+            mesh->vertices[v1 - 1]->half_edge = he1;
             he2->vertex = mesh->vertices[v2 - 1];
+            mesh->vertices[v2 - 1]->half_edge = he2;
             he3->vertex = mesh->vertices[v3 - 1];
+            mesh->vertices[v3 - 1]->half_edge = he3;
 
             face->half_edge = he1;
 
@@ -179,6 +182,10 @@ std::shared_ptr<Mesh> ObjMeshIO::load_mesh(const std::string& mesh_path)
             he1->prev = he3;
             he2->prev = he1;
             he3->prev = he2;
+
+            he1->face = face;
+            he2->face = face;
+            he3->face = face;
 
             mesh->half_edges.emplace_back(he1);
             mesh->half_edges.emplace_back(he2);

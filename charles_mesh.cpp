@@ -51,6 +51,7 @@ Mesh::Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<i
                 face->half_edge = he;
             }
             he->vertex = this->vertices[edge];
+            this->vertices[edge]->half_edge = he;
             he->face = face;
             temp_half_edges.emplace_back(he);
         }
@@ -77,6 +78,67 @@ Mesh::Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<i
             }
         }
     }
+}
+
+/**
+ * @brief flip edge, but take attention, this is based triangle, could not used on other polygon
+ *     v1
+ *    /  ^
+ * e1/    \e3
+ *  v      \
+ * v2  -e2-> v3
+ *  \ <-e4- ^
+ * e5\     / e6
+ *    v   /
+ *     v4
+ * @param he: halfedge
+ */
+void Mesh::edge_flip(std::shared_ptr<HalfEdge> he)
+{
+    auto e1 = he->prev;
+    auto e2 = he;
+    auto e3 = he->next;
+    auto e4 = e2->opposite;
+    auto e5 = e4->next;
+    auto e6 = e5->next;
+
+    auto v1 = e3->vertex;
+    auto v2 = e1->vertex;
+    auto v3 = e2->vertex;
+    auto v4 = e5->vertex;
+
+    auto f1 = e2->face;
+    auto f2 = e4->face;
+
+    // change half edge connection and its directed vertex and its face
+    e2->next = e1;
+    e2->prev = e5;
+    e2->vertex = v1;
+
+    e5->next = e2;
+    e5->prev = e1;
+    e5->face = f1;
+
+    e1->prev = e2;
+    e1->next = e5;
+    e1->face = f1;
+
+
+    e4->next = e6;
+    e4->prev = e3;
+    e4->vertex = v4;
+
+    e3->next = e4;
+    e3->prev = e6;
+    e3->face = f2;
+
+    e6->next = e3;
+    e6->prev = e4;
+    e6->face = f2;
+
+    // change the half edge of vertex(seems no need to change)
+
+    // change the half edge of face(still no need to change)
 }
 
 };
