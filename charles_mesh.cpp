@@ -141,4 +141,10 @@ void Mesh::edge_flip(std::shared_ptr<HalfEdge> he)
     // change the half edge of face(still no need to change)
 }
 
+Mesh::Mesh(const std::string& mesh_file_path)
+{
+    // construct mesh by mesh file, such obj/off or other file type
+}
+
+
 };
