@@ -13,7 +13,7 @@ void init_mesh(const std::string& mesh_path)
     auto file_extension = fp_mesh_path.extension().string();
 }
 
-Mesh::Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons)
+void Mesh::init(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons)
 {
     bool first_vertex = true, first_edge = true, first_face = true;
     for(const auto& vertex: vertices)
@@ -80,6 +80,11 @@ Mesh::Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<i
     }
 }
 
+Mesh::Mesh(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons)
+{
+    this->init(vertices, polygons);
+}
+
 /**
  * @brief flip edge, but take attention, this is based triangle, could not used on other polygon
  *     v1
@@ -143,7 +148,13 @@ void Mesh::edge_flip(std::shared_ptr<HalfEdge> he)
 
 Mesh::Mesh(const std::string& mesh_file_path)
 {
-    // construct mesh by mesh file, such obj/off or other file type
+    // TODO: construct mesh by mesh file, such obj/off or other file type
+}
+
+bool Mesh::intersect(const std::vector<int>& polygon)
+{
+    // TODO: init bvh tree for mesh, then check if it intersect with polygon
+    return true;
 }
 
 
