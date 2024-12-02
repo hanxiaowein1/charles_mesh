@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <memory>
+#include "charles_bvh.h"
 
 namespace charles_mesh
 {
@@ -22,10 +23,26 @@ public:
     std::shared_ptr<HalfEdge> half_edge;
 };
 
-class Face
+class Face : public Object
 {
+private:
+    double min_x = std::numeric_limits<double>::max();
+    double max_x = std::numeric_limits<double>::min();
+    double min_y = std::numeric_limits<double>::max();
+    double max_y = std::numeric_limits<double>::min();
+    double min_z = std::numeric_limits<double>::max();
+    double max_z = std::numeric_limits<double>::min();
+    bool is_valid = false;
 public:
     std::shared_ptr<HalfEdge> half_edge;
+    virtual double get_min_x();
+    virtual double get_max_x();
+    virtual double get_min_y();
+    virtual double get_max_y();
+    virtual double get_min_z();
+    virtual double get_max_z();
+    void update_bounding();
+    virtual bool intersect(std::shared_ptr<Object> object);
 };
 
 class HalfEdge
@@ -55,7 +72,8 @@ public:
 public:
     void edge_flip(std::shared_ptr<HalfEdge> he);
     void init(const std::vector<Point3D>& vertices, const std::vector<std::vector<int>>& polygons);
-    bool intersect(const std::vector<int>& polygon);
+    // bool intersect(const std::vector<int>& polygon);
+    bool intersect(std::shared_ptr<Face> polygon);
 };
 
 };

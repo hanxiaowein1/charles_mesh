@@ -1,11 +1,113 @@
 #include <string>
 #include <filesystem>
+#include <limits>
 
 #include "charles_mesh.h"
 #include "unit_test.h"
+#include "charles_bvh.h"
 
 namespace charles_mesh
 {
+
+bool Face::intersect(std::shared_ptr<Object> object)
+{
+    auto face = std::dynamic_pointer_cast<Face>(object);
+    // test this and face intersect
+    // TODO: need to be implement later
+
+}
+
+double Face::get_min_x()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->min_x;
+}
+
+double Face::get_max_x()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->max_x;
+}
+
+double Face::get_min_y()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->min_y;
+}
+
+double Face::get_max_y()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->max_y;
+}
+
+double Face::get_min_z()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->min_z;
+}
+
+double Face::get_max_z()
+{
+    if(!this->is_valid)
+    {
+        this->update_bounding();
+    }
+    return this->max_z;
+}
+
+void Face::update_bounding()
+{
+    auto head = this->half_edge;
+    auto iter = this->half_edge;
+    do
+    {
+        auto vertex = iter->vertex;
+        if(vertex->position.x < this->min_x)
+        {
+            this->min_x = vertex->position.x;
+        }
+        if(vertex->position.x > this->max_x)
+        {
+            this->max_x = vertex->position.x;
+        }
+
+        if(vertex->position.y < this->min_y)
+        {
+            this->min_y = vertex->position.y;
+        }
+        if(vertex->position.y > this->max_y)
+        {
+            this->max_y = vertex->position.y;
+        }
+
+        if(vertex->position.z < this->min_z)
+        {
+            this->min_z = vertex->position.z;
+        }
+        if(vertex->position.z > this->max_z)
+        {
+            this->max_z = vertex->position.z;
+        }
+        iter = iter->next;
+    } while (iter != head);
+    this->is_valid = true;
+}
 
 void init_mesh(const std::string& mesh_path)
 {
@@ -151,10 +253,29 @@ Mesh::Mesh(const std::string& mesh_file_path)
     // TODO: construct mesh by mesh file, such obj/off or other file type
 }
 
-bool Mesh::intersect(const std::vector<int>& polygon)
+/**
+ * @brief if mesh is intersect with polygon
+ * 
+ * @param polygon 
+ * @return true 
+ * @return false 
+ */
+// bool Mesh::intersect(const std::vector<int>& polygon)
+bool Mesh::intersect(std::shared_ptr<Face> polygon)
 {
     // TODO: init bvh tree for mesh, then check if it intersect with polygon
-    return true;
+    std::vector<std::shared_ptr<Object>> objects;
+    for(auto face: this->faces)
+    {
+        objects.emplace_back(std::dynamic_pointer_cast<Object>(face));
+    }
+    std::shared_ptr<BVHNode> bvh_tree = build_bvh(objects, 0, objects.size() - 1);
+    std::shared_ptr<Object> object = std::dynamic_pointer_cast<Object>(polygon);
+    if(bvh_intersect(bvh_tree, object))
+    {
+        return true;
+    }
+    return false;
 }
 
 
