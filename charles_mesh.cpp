@@ -92,6 +92,12 @@ bool Face::intersect(const Point3D& point1, const Point3D& point2, Point3D& inte
         return false;
     }
 
+    // should alse check if point inside polygon
+    if(!this->point_inside(intersect_p))
+    {
+        return false;
+    }
+
     return true;
 }
 
