@@ -7,21 +7,10 @@
 #include <limits>
 
 #include "simple_math.h"
+#include "mesh_type.h"
 
 namespace charles_mesh
 {
-
-class Object
-{
-public:
-    virtual double get_min_x() = 0;
-    virtual double get_max_x() = 0;
-    virtual double get_min_y() = 0;
-    virtual double get_max_y() = 0;
-    virtual double get_min_z() = 0;
-    virtual double get_max_z() = 0;
-    virtual bool intersect(std::shared_ptr<Object> object) = 0;
-};
 
 class BoundingBox
 {
@@ -75,15 +64,15 @@ public:
 
     bool intersect(const BoundingBox& box)
     {
-        if(::intersect<double>(this->min_x, this->max_x, box.min_x, box.max_x))
+        if(charles_math::intersect<double>(this->min_x, this->max_x, box.min_x, box.max_x))
         {
             return true;
         }
-        if(::intersect<double>(this->min_y, this->max_y, box.min_y, box.max_y))
+        if(charles_math::intersect<double>(this->min_y, this->max_y, box.min_y, box.max_y))
         {
             return true;
         }
-        if(::intersect<double>(this->min_z, this->max_z, box.min_z, box.max_z))
+        if(charles_math::intersect<double>(this->min_z, this->max_z, box.min_z, box.max_z))
         {
             return true;
         }

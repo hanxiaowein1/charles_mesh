@@ -75,7 +75,7 @@ bool bvh_intersect(std::shared_ptr<BVHNode> node, std::shared_ptr<Object> object
         }
         return false;
     }
-    return intersect(node->left, object) || intersect(node->right, object);
+    return bvh_intersect(node->left, object) || bvh_intersect(node->right, object);
 }
 
 };

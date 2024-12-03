@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <limits>
 
+#include <Eigen/Dense>
+
 #include "charles_mesh.h"
 #include "unit_test.h"
 #include "charles_bvh.h"
@@ -9,12 +11,129 @@
 namespace charles_mesh
 {
 
+Vector3D Face::normal()
+{
+    // use first three point to calculate normal
+    Vector3D face_normal;
+    auto iter = this->half_edge;
+    std::vector<Point3D> points;
+    for(int i = 0; i < 3; i++)
+    {
+        points.emplace_back(iter->vertex->position);
+    }
+    Vector3D vec1 = points[1] - points[0];
+    Vector3D vec2 = points[2] - points[0];
+    return vec1.cross(vec2);
+}
+
+std::vector<double> Face::plane()
+{
+    auto normal = this->normal();
+    std::vector<double> equation(4);
+    Point3D point = this->half_edge->vertex->position;
+    equation[0] = normal[0];
+    equation[1] = normal[1];
+    equation[2] = normal[2];
+    equation[3] = -(normal[0] * point.x + normal[1] * point.y + normal[2] * point.z);
+    return equation;
+}
+
+bool Face::point_inside(const Point3D& point)
+{
+    // check if point is the left/right of all edges
+    auto iter = this->half_edge;
+    auto head = iter;
+    Vector3D first_dir;
+    do
+    {
+        const auto& v0 = iter->prev->vertex->position;
+        const auto& v1 = iter->vertex->position;
+        Vector3D edge = v1 - v0;
+        Vector3D inner_edge = point - v0;
+        if(iter == head)
+        {
+            // initialize first_dir and then do nothing
+            first_dir = edge.cross(inner_edge);
+        }
+        else
+        {
+            Vector3D current_dir = edge.cross(inner_edge);
+            // check if dir is same, if not same, then point is not inside
+            if(!first_dir.acute_angle(current_dir))
+            {
+                return false;
+            }
+        }
+        iter = iter->next;
+    } while (iter != head);
+    return true;
+}
+
+bool Face::intersect(const Point3D& point1, const Point3D& point2, Point3D& intersect_p)
+{
+    auto equation = this->plane();
+    double a = equation[0], b = equation[1], c = equation[2], d = equation[3];
+    double x0 = point1.x, y0 = point1.y, z0 = point1.z;
+    double x1 = point2.x, y1 = point2.y, z1 = point2.z;
+    double denominator = a * (x1 - x0) + b * (y1 - y0) + c * (z1 - z0);
+    if (denominator == 0) {
+        return false;  // Line is parallel to the plane
+    }
+
+    double t = -(a * x0 + b * y0 + c * z0 + d) / denominator;
+    intersect_p.x = x0 + t * (x1 - x0);
+    intersect_p.y = y0 + t * (y1 - y0);
+    intersect_p.z = z0 + t * (z1 - z0);
+
+    // check if intersect_p between point1 and point2
+
+    if(!intersect_p.between(point1, point2))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+
 bool Face::intersect(std::shared_ptr<Object> object)
 {
     auto face = std::dynamic_pointer_cast<Face>(object);
     // test this and face intersect
-    // TODO: need to be implement later
+    // if has an edge with intersection of other face, then it's intersect, otherwise not intersect
+    {
+        auto iter = this->half_edge;
+        auto head = iter;
+        do
+        {
+            auto point1 = iter->vertex->position;
+            auto point2 = iter->next->vertex->position;
+            Point3D intersect_p;
+            if(this->intersect(point1, point2, intersect_p))
+            {
+                return true;
+            }
+            iter = iter->next;
+        } while (iter != head);
+    }
 
+    {
+        auto iter2 = face->half_edge;
+        auto head2 = iter2;
+        do
+        {
+            auto point1 = iter2->vertex->position;
+            auto point2 = iter2->next->vertex->position;
+            Point3D intersect_p;
+            if(face->intersect(point1, point2, intersect_p))
+            {
+                return true;
+            }
+            iter2 = iter2->next;
+        } while (iter2 != head2);
+    }
+
+    return false;
 }
 
 double Face::get_min_x()
@@ -263,7 +382,6 @@ Mesh::Mesh(const std::string& mesh_file_path)
 // bool Mesh::intersect(const std::vector<int>& polygon)
 bool Mesh::intersect(std::shared_ptr<Face> polygon)
 {
-    // TODO: init bvh tree for mesh, then check if it intersect with polygon
     std::vector<std::shared_ptr<Object>> objects;
     for(auto face: this->faces)
     {

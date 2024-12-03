@@ -7,6 +7,13 @@ set(CMAKE_PREFIX_PATH "D:\\OwnLibrary" ${CMAKE_PREFIX_PATH})
 
 project(charles_mesh)
 
-add_executable(${PROJECT_NAME}_test mesh_factory.cpp charles_mesh.cpp unit_test.cpp charles_mesh_test.cpp)
+add_executable(
+    ${PROJECT_NAME}_test
+    mesh_factory.cpp
+    charles_mesh.cpp
+    charles_bvh.cpp
+    simple_math.cpp
+    unit_test.cpp
+    charles_mesh_test.cpp)
 find_package(GTest CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock)

@@ -4,15 +4,10 @@
 #include <vector>
 #include <memory>
 #include "charles_bvh.h"
+#include "mesh_type.h"
 
 namespace charles_mesh
 {
-
-class Point3D
-{
-public:
-    double x, y, z;
-};
 
 class HalfEdge;
 
@@ -43,6 +38,11 @@ public:
     virtual double get_max_z();
     void update_bounding();
     virtual bool intersect(std::shared_ptr<Object> object);
+    virtual bool point_inside(const Point3D& point);
+    bool intersect(const Point3D& point1, const Point3D& point2, Point3D& intersect_p);
+    Vector3D normal();
+    // [a, b, c, d] of ax + by + cz + d = 0
+    std::vector<double> plane();
 };
 
 class HalfEdge
