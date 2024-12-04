@@ -68,6 +68,22 @@ public:
         }
         return true;
     }
+    bool operator==(const Point3D& point) const
+    {
+        if(!(this->x == point.x))
+        {
+            return false;
+        }
+        if(!(this->y == point.y))
+        {
+            return false;
+        }
+        if(!(this->z == point.z))
+        {
+            return false;
+        }
+        return true;
+    }
 };
 
 typedef Point3D Vector3D;

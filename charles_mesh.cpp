@@ -20,9 +20,10 @@ Vector3D Face::normal()
     for(int i = 0; i < 3; i++)
     {
         points.emplace_back(iter->vertex->position);
+        iter = iter->next;
     }
-    Vector3D vec1 = points[1] - points[0];
-    Vector3D vec2 = points[2] - points[0];
+    Vector3D vec1 = points[0] - points[1];
+    Vector3D vec2 = points[1] - points[2];
     return vec1.cross(vec2);
 }
 
@@ -101,21 +102,27 @@ bool Face::intersect(const Point3D& point1, const Point3D& point2, Point3D& inte
     return true;
 }
 
-
+/**
+ * @brief detect if there are intersection between this and object
+ * NOTE: line segment of face has no intersection between face(by unit test)
+ * @param object 
+ * @return true 
+ * @return false 
+ */
 bool Face::intersect(std::shared_ptr<Object> object)
 {
     auto face = std::dynamic_pointer_cast<Face>(object);
     // test this and face intersect
     // if has an edge with intersection of other face, then it's intersect, otherwise not intersect
+    Point3D intersect_p;
     {
         auto iter = this->half_edge;
         auto head = iter;
         do
         {
-            auto point1 = iter->vertex->position;
-            auto point2 = iter->next->vertex->position;
-            Point3D intersect_p;
-            if(this->intersect(point1, point2, intersect_p))
+            const auto& point1 = iter->vertex->position;
+            const auto& point2 = iter->next->vertex->position;
+            if(face->intersect(point1, point2, intersect_p))
             {
                 return true;
             }
@@ -130,8 +137,7 @@ bool Face::intersect(std::shared_ptr<Object> object)
         {
             auto point1 = iter2->vertex->position;
             auto point2 = iter2->next->vertex->position;
-            Point3D intersect_p;
-            if(face->intersect(point1, point2, intersect_p))
+            if(this->intersect(point1, point2, intersect_p))
             {
                 return true;
             }
@@ -266,7 +272,7 @@ void Mesh::init(const std::vector<Point3D>& vertices, const std::vector<std::vec
             first_face = false;
         }
         this->faces.emplace_back(face);
-
+        bool face_first_edge = true;
         std::vector<std::shared_ptr<HalfEdge>> temp_half_edges;
         for(const auto& edge: polygon)
         {
@@ -275,6 +281,10 @@ void Mesh::init(const std::vector<Point3D>& vertices, const std::vector<std::vec
             {
                 first_edge = false;
                 this->e_head = he;
+            }
+            if(face_first_edge)
+            {
+                face_first_edge = false;
                 face->half_edge = he;
             }
             he->vertex = this->vertices[edge];
@@ -393,7 +403,7 @@ bool Mesh::intersect(std::shared_ptr<Face> polygon)
     {
         objects.emplace_back(std::dynamic_pointer_cast<Object>(face));
     }
-    std::shared_ptr<BVHNode> bvh_tree = build_bvh(objects, 0, objects.size() - 1);
+    std::shared_ptr<BVHNode> bvh_tree = build_bvh(objects, 0, objects.size());
     std::shared_ptr<Object> object = std::dynamic_pointer_cast<Object>(polygon);
     if(bvh_intersect(bvh_tree, object))
     {

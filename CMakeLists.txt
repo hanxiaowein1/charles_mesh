@@ -13,6 +13,7 @@ add_executable(
     charles_mesh.cpp
     charles_bvh.cpp
     simple_math.cpp
+    mesh_type_test.cpp
     unit_test.cpp
     charles_mesh_test.cpp)
 find_package(GTest CONFIG REQUIRED)
