@@ -2,8 +2,6 @@
 #include <filesystem>
 #include <limits>
 
-#include <Eigen/Dense>
-
 #include "charles_mesh.h"
 #include "unit_test.h"
 #include "charles_bvh.h"

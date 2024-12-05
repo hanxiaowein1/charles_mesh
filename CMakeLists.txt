@@ -18,3 +18,64 @@ add_executable(
     charles_mesh_test.cpp)
 find_package(GTest CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock)
+
+
+# this is for export libary for external use
+set(CMAKE_INSTALL_PREFIX "D:/OwnLibrary")
+
+add_library(
+    ${PROJECT_NAME}
+    mesh_factory.cpp
+    charles_mesh.cpp
+    charles_bvh.cpp
+    simple_math.cpp
+)
+
+target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock)
+
+# 引入要用到的 CMake 模块
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+# 基本安装及 Targets 文件的生成
+install(TARGETS ${PROJECT_NAME}
+    EXPORT ${PROJECT_NAME}-targets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+# Targets 文件的安装
+install(EXPORT ${PROJECT_NAME}-targets
+    FILE ${PROJECT_NAME}-targets.cmake
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
+
+# Config 文件的导出（与安装？）
+configure_package_config_file(
+    ${PROJECT_SOURCE_DIR}/cmake/config.cmake.in
+    ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
+
+# ConfigVersion 文件的导出
+write_basic_package_version_file(
+    ${PROJECT_NAME}-config-version.cmake
+    VERSION 0.1
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Config 和 ConfigVersion 文件的安装
+install(FILES
+    ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
+    ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
+# install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES "${PROJECT_SOURCE_DIR}/charles_bvh.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/charles_mesh.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/mesh_factory.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/mesh_type.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/simple_math.h" DESTINATION include)

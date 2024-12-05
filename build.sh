@@ -1,0 +1,1 @@
+cmake -D "CMAKE_INSTALL_PREFIX:PATH=D:/OwnLibrary" ../
