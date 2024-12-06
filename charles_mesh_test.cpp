@@ -28,7 +28,7 @@ TEST(GlobalTest, construct_mesh_with_vertex_polygon)
 {
     auto [vertices, polygons] = get_tetrahedron();
 
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     ObjMeshIO obj_mesh_io = ObjMeshIO();
     obj_mesh_io.save_mesh("./", "tetrahedron", mesh);
 }
@@ -37,7 +37,7 @@ TEST(GlobalTest, edge_flip)
 {
     auto [vertices, polygons] = get_tetrahedron();
 
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     mesh->edge_flip(mesh->e_head);
     ObjMeshIO obj_mesh_io = ObjMeshIO();
     obj_mesh_io.save_mesh("./", "edge_flip", mesh);
@@ -46,7 +46,7 @@ TEST(GlobalTest, edge_flip)
 TEST(GlobalTest, face_normal)
 {
     auto [vertices, polygons] = get_tetrahedron();
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     auto face = mesh->faces[0];
     auto normal = face->normal();
     Vector3D ep_normal{0, 0, -1};
@@ -57,7 +57,7 @@ TEST(GlobalTest, face_normal)
 TEST(GlobalTest, face_plane)
 {
     auto [vertices, polygons] = get_tetrahedron();
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     auto face = mesh->faces[3];
     auto equation = face->plane();
     ASSERT_EQ(1, equation[0]);
@@ -70,7 +70,7 @@ TEST(GlobalTest, face_plane)
 TEST(GlobalTest, face_point_inside)
 {
     auto [vertices, polygons] = get_tetrahedron();
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     auto face = mesh->faces[0];
     Point3D point{ 0.1f, 0.1f, 0 };
     ASSERT_EQ(true, face->point_inside(point));
@@ -79,7 +79,7 @@ TEST(GlobalTest, face_point_inside)
 TEST(GlobalTest, face_line_segment_intersect)
 {
     auto [vertices, polygons] = get_tetrahedron();
-    std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
     auto face = mesh->faces[3];
     
     {
@@ -108,16 +108,16 @@ TEST(GlobalTest, face_face_intersect)
     // test has intersection
     {
         std::vector<Point3D> vertices1{
-           {1, 0, 0},
-           {0, 1, 0},
-           {0, 0, 1}
+            {1, 0, 0},
+            {0, 1, 0},
+            {0, 0, 1}
         };
 
         std::vector<std::vector<int>> polygons1{
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh1(new Mesh(vertices1, polygons1));
+        std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
         auto face1 = mesh1->faces[0];
 
         std::vector<Point3D> vertices2{
@@ -130,26 +130,57 @@ TEST(GlobalTest, face_face_intersect)
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh2(new Mesh(vertices2, polygons2));
+        std::shared_ptr<Mesh<Point3D>> mesh2(new Mesh<Point3D>(vertices2, polygons2));
         auto face2 = mesh2->faces[0];
 
         auto is_intersect = face1->intersect(face2);
         ASSERT_EQ(is_intersect, true);
     }
 
+    // test if has intersection if they are in same plane
+    {
+        std::vector<Point3D> vertices1{
+            {0, 0, 0},
+            {1, 0, 0},
+            {0, 1, 0}
+        };
+        std::vector<std::vector<int>> polygons1{
+            { 0, 1, 2 }
+        };
+        std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
+        auto face1 = mesh1->faces[0];
+
+
+        std::vector<Point3D> vertices2{
+            {0, 0, 0},
+            {1, 0, 0},
+            {1, 1, 0}
+        };
+        std::vector<std::vector<int>> polygons2{
+            { 0, 1, 2 }
+        };
+
+        std::shared_ptr<Mesh<Point3D>> mesh2(new Mesh<Point3D>(vertices2, polygons2));
+        auto face2 = mesh2->faces[0];
+
+        auto is_intersect = face1->intersect(face2);
+        // NOTE: by test, face in same plane has no intersection(strange, but is good for edge flip intersection detection)
+        ASSERT_EQ(is_intersect, false);
+    }
+
     // test no intersection
     {
         std::vector<Point3D> vertices1{
-           {1, 0, 0},
-           {0, 1, 0},
-           {0, 0, 1}
+            {1, 0, 0},
+            {0, 1, 0},
+            {0, 0, 1}
         };
 
         std::vector<std::vector<int>> polygons1{
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh1(new Mesh(vertices1, polygons1));
+        std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
         auto face1 = mesh1->faces[0];
 
         std::vector<Point3D> vertices2{
@@ -162,7 +193,7 @@ TEST(GlobalTest, face_face_intersect)
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh2(new Mesh(vertices2, polygons2));
+        std::shared_ptr<Mesh<Point3D>> mesh2(new Mesh<Point3D>(vertices2, polygons2));
         auto face2 = mesh2->faces[0];
 
         auto is_intersect = face1->intersect(face2);
@@ -175,7 +206,7 @@ TEST(GlobalTest, mesh_intersect)
     // test intersect
     {
         auto [vertices, polygons] = get_tetrahedron();
-        std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
 
         std::vector<Point3D> vertices1{
             {0.5f, 0, 0},
@@ -187,7 +218,7 @@ TEST(GlobalTest, mesh_intersect)
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh1(new Mesh(vertices1, polygons1));
+        std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
         auto face1 = mesh1->faces[0];
 
         ASSERT_EQ(true, mesh->intersect(face1));
@@ -195,7 +226,7 @@ TEST(GlobalTest, mesh_intersect)
     // test not intersect
     {
         auto [vertices, polygons] = get_tetrahedron();
-        std::shared_ptr<Mesh> mesh(new Mesh(vertices, polygons));
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
 
         std::vector<Point3D> vertices1{
             {1.0f, 1.0f, 1.0f},
@@ -207,7 +238,7 @@ TEST(GlobalTest, mesh_intersect)
             { 0, 1, 2 }
         };
 
-        std::shared_ptr<Mesh> mesh1(new Mesh(vertices1, polygons1));
+        std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
         auto face1 = mesh1->faces[0];
 
         ASSERT_EQ(false, mesh->intersect(face1));
