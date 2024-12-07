@@ -49,6 +49,14 @@ ObjMeshIO<VData>::ObjMeshIO()
     this->mesh_extension = ".obj";
 }
 
+/**
+ * @brief save mesh to obj file, but cannot save none manifold mesh(will occur empty pointer error(such as opposite is empty, which is impossible in manifold mesh))
+ * 
+ * @tparam VData: vertex data, such Point3D
+ * @param mesh_dir 
+ * @param mesh_name 
+ * @param mesh 
+ */
 template<typename VData>
 void ObjMeshIO<VData>::save_mesh(const std::string& mesh_dir, const std::string& mesh_name, std::shared_ptr<Mesh<VData>> mesh)
 {

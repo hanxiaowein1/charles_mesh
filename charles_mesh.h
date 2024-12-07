@@ -3,6 +3,10 @@
 
 #include <vector>
 #include <memory>
+#include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <unordered_map>
 #include "charles_bvh.h"
 #include "mesh_type.h"
 
@@ -84,6 +88,7 @@ public:
     void init(const std::vector<VData>& vertices, const std::vector<std::vector<int>>& polygons);
     // bool intersect(const std::vector<int>& polygon);
     bool intersect(std::shared_ptr<Face<VData>> polygon);
+    void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
 };
 
 
@@ -570,6 +575,42 @@ bool Mesh<VData>::intersect(std::shared_ptr<Face<VData>> polygon)
     return false;
 }
 
+template<typename VData>
+void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_name)
+{
+    // just use member vertices and faces to save
+    std::string mesh_path = std::format("{}{}.obj", mesh_dir, mesh_name);
+    std::ofstream file(mesh_path);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file for writing: " << mesh_path << std::endl;
+        return;
+    }
+    file << std::fixed << std::setprecision(std::numeric_limits<double>::digits10);
+    // save index cache to better search
+    std::unordered_map<decltype(this->v_head), int> index_cache;
+    int count = 0;
+    for(const auto& vertex: this->vertices)
+    {
+        file << "v " << vertex->position.x << " " << vertex->position.y << " " << vertex->position.z << std::endl;
+        index_cache.emplace(vertex, count);
+        count++;
+    }
+
+    for (const auto& face : faces)
+    {
+        file << "f";
+        auto iter = face->half_edge;
+        auto head = iter;
+        do
+        {
+            int index = index_cache.at(iter->vertex);
+            file << " " << index + 1;
+            iter = iter->next;
+        } while (iter != head);
+    }
+
+    file.close();
+}
 
 };
 
