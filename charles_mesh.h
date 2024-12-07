@@ -23,7 +23,7 @@ public:
 };
 
 template <typename VData = Point3D>
-class Face : public Object
+class Face : public Object<VData>
 {
 private:
     double min_x = std::numeric_limits<double>::max();
@@ -42,7 +42,7 @@ public:
     virtual double get_min_z();
     virtual double get_max_z();
     void update_bounding();
-    virtual bool intersect(std::shared_ptr<Object> object);
+    virtual bool intersect(std::shared_ptr<Object<VData>> object);
     virtual bool point_inside(const VData& point);
     bool intersect(const VData& point1, const VData& point2, VData& intersect_p);
     VData normal();
@@ -158,8 +158,8 @@ bool Face<VData>::point_inside(const VData& point)
     VData first_dir;
     do
     {
-        const auto& v0 = iter->prev->vertex->position;
-        const auto& v1 = iter->vertex->position;
+        const VData& v0 = iter->prev->vertex->position;
+        const VData& v1 = iter->vertex->position;
         VData edge = v1 - v0;
         VData inner_edge = point - v0;
         if(iter == head)
@@ -222,7 +222,7 @@ bool Face<VData>::intersect(const VData& point1, const VData& point2, VData& int
  * @return false 
  */
 template <typename VData>
-bool Face<VData>::intersect(std::shared_ptr<Object> object)
+bool Face<VData>::intersect(std::shared_ptr<Object<VData>> object)
 {
     auto face = std::dynamic_pointer_cast<Face<VData>>(object);
     // test this and face intersect
@@ -556,13 +556,13 @@ Mesh<VData>::Mesh(const std::string& mesh_file_path)
 template <typename VData>
 bool Mesh<VData>::intersect(std::shared_ptr<Face<VData>> polygon)
 {
-    std::vector<std::shared_ptr<Object>> objects;
+    std::vector<std::shared_ptr<Object<VData>>> objects;
     for(auto face: this->faces)
     {
-        objects.emplace_back(std::dynamic_pointer_cast<Object>(face));
+        objects.emplace_back(std::dynamic_pointer_cast<Object<VData>>(face));
     }
-    std::shared_ptr<BVHNode> bvh_tree = build_bvh(objects, 0, objects.size());
-    std::shared_ptr<Object> object = std::dynamic_pointer_cast<Object>(polygon);
+    std::shared_ptr<BVHNode<Object<VData>>> bvh_tree = build_bvh(objects, 0, objects.size());
+    std::shared_ptr<Object<VData>> object = std::dynamic_pointer_cast<Object<VData>>(polygon);
     if(bvh_intersect(bvh_tree, object))
     {
         return true;

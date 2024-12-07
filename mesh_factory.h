@@ -178,7 +178,7 @@ std::shared_ptr<Mesh<VData>> ObjMeshIO<VData>::load_mesh(const std::string& mesh
             int v1, v2, v3;
             sscanf(line.c_str(), "f %d %d %d", &v1, &v2, &v3);
             // Create a face
-            std::shared_ptr<Face<VData>> face(new Face());
+            std::shared_ptr<Face<VData>> face(new Face<VData>());
             if(first_face)
             {
                 mesh->f_head = face;

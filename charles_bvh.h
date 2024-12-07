@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <limits>
+#include <format>
 
 #include "simple_math.h"
 #include "mesh_type.h"
@@ -12,6 +13,7 @@
 namespace charles_mesh
 {
 
+template<typename OBJECT=Object<Point3D>>
 class BoundingBox
 {
 public:
@@ -21,7 +23,7 @@ public:
 
     BoundingBox() : min_x(std::numeric_limits<double>::max()), max_x(std::numeric_limits<double>::min()), min_y(std::numeric_limits<double>::max()), max_y(std::numeric_limits<double>::min()), min_z(std::numeric_limits<double>::max()), max_z(std::numeric_limits<double>::min()) {}
 
-    BoundingBox(std::shared_ptr<Object> object)
+    BoundingBox(std::shared_ptr<OBJECT> object)
     {
         this->min_x = object->get_min_x();
         this->min_y = object->get_min_y();
@@ -42,7 +44,7 @@ public:
         max_z = std::max(max_z, z);
     }
 
-    void expand(std::shared_ptr<Object> object)
+    void expand(std::shared_ptr<OBJECT> object)
     {
         this->min_x = std::min(this->min_x, object->get_min_x());
         this->max_x = std::max(this->max_x, object->get_max_x());
@@ -52,7 +54,7 @@ public:
         this->max_z = std::max(this->max_z, object->get_max_z());
     }
 
-    bool intersect(std::shared_ptr<Object> object)
+    bool intersect(std::shared_ptr<OBJECT> object)
     {
         BoundingBox bounding_box(object);
         if(this->intersect(bounding_box))
@@ -81,15 +83,16 @@ public:
 };
 
 
+template<typename OBJECT=Object<Point3D>>
 class BVHNode
 {
 public:
-    BoundingBox box;
-    std::shared_ptr<BVHNode> left;
-    std::shared_ptr<BVHNode> right;
+    BoundingBox<OBJECT> box;
+    std::shared_ptr<BVHNode<OBJECT>> left;
+    std::shared_ptr<BVHNode<OBJECT>> right;
     bool is_leaf;
     // store real object pointer
-    std::shared_ptr<Object> object;
+    std::shared_ptr<OBJECT> object;
 
     BVHNode() : left(nullptr), right(nullptr), is_leaf(true), object(nullptr)
     {
@@ -105,8 +108,83 @@ int max_index(const std::vector<T>& vec)
     return index;
 }
 
-bool bvh_intersect(std::shared_ptr<BVHNode> node, std::shared_ptr<Object> object);
-std::shared_ptr<BVHNode> build_bvh(std::vector<std::shared_ptr<Object>>& objects, int start, int end);
+template<typename OBJECT>
+bool bvh_intersect(std::shared_ptr<BVHNode<OBJECT>> node, std::shared_ptr<OBJECT> object)
+{
+    if(node == nullptr)
+    {
+        return false;
+    }
+    if(!node->box.intersect(object))
+    {
+        return false;
+    }
+    if(node->left == nullptr && node->right == nullptr)
+    {
+        // check leaf node intersection
+        if(object->intersect(node->object))
+        {
+            return true;
+        }
+        return false;
+    }
+    return bvh_intersect(node->left, object) || bvh_intersect(node->right, object);
+}
+
+template<typename OBJECT>
+std::shared_ptr<BVHNode<OBJECT>> build_bvh(std::vector<std::shared_ptr<OBJECT>>& objects, int start, int end)
+{
+    std::shared_ptr<BVHNode<OBJECT>> node(new BVHNode<OBJECT>());
+
+    // Calculate the bounding box for the current set of objects
+    for (int i = start; i < end; ++i)
+    {
+        node->box.expand(objects[i]);
+    }
+
+    // If there's only one box, this is a leaf node
+    if (end - start == 1)
+    {
+        node->is_leaf = true;
+        node->object = objects[start];
+        return node;
+    }
+
+    // Sort the boxes along the longest axis to split them
+    double extent_x = node->box.max_x - node->box.min_x;
+    double extent_y = node->box.max_y - node->box.min_y;
+    double extent_z = node->box.max_z - node->box.min_z;
+
+    int axis = max_index(std::vector<double>{extent_x, extent_y, extent_z});
+
+    std::sort(objects.begin() + start, objects.begin() + end, [axis](std::shared_ptr<OBJECT> a, std::shared_ptr<OBJECT> b) {
+        if(axis == 0)
+        {
+            return (a->get_min_x() + a->get_max_x()) < (b->get_min_x() + b->get_max_x());
+        }
+        else if(axis == 1)
+        {
+            return (a->get_min_y() + a->get_max_y()) < (b->get_min_y() + b->get_max_y());
+        }
+        else if(axis == 2)
+        {
+            return (a->get_min_z() + a->get_max_z()) < (b->get_min_z() + b->get_max_z());
+        }
+        else
+        {
+            throw std::exception(std::format("axis {} should in [0, 1, 2]", axis).c_str());
+        }
+    });
+
+    // Split the boxes into two halves and recursively build the left and right subtrees
+    int mid = start + (end - start) / 2;
+    node->left = build_bvh(objects, start, mid);
+    node->right = build_bvh(objects, mid, end);
+    node->is_leaf = false;
+
+    return node;
+}
+
 
 };
 

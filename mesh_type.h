@@ -88,6 +88,7 @@ public:
 
 typedef Point3D Vector3D;
 
+template<typename VData=Point3D>
 class Object
 {
 public:
@@ -97,8 +98,8 @@ public:
     virtual double get_max_y() = 0;
     virtual double get_min_z() = 0;
     virtual double get_max_z() = 0;
-    virtual bool intersect(std::shared_ptr<Object> object) = 0;
-    virtual bool point_inside(const Point3D& point) = 0;
+    virtual bool intersect(std::shared_ptr<Object<VData>> object) = 0;
+    virtual bool point_inside(const VData& point) = 0;
 };
 
 };
