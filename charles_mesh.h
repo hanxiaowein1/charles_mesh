@@ -473,6 +473,7 @@ bool Mesh<VData>::edge_flip_with_intersection_detect(std::shared_ptr<HalfEdge<VD
 
     // do edge flip
     this->edge_flip(he);
+    return true;
 }
 
 

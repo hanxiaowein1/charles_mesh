@@ -245,4 +245,52 @@ TEST(GlobalTest, mesh_intersect)
     }
 }
 
+TEST(GlobalTest, mesh_edge_flip_with_intersection_detect)
+{
+    // has intersection, and flip failed
+    {
+        auto [vertices, polygons] = get_tetrahedron();
+        std::vector<Point3D> to_flip_vertices{
+            {0, -0.1f, -0.1f},
+            {0, -0.1f, 0.9f},
+            {0.9f, -1.0f, 0.1f},
+            {0, 0.9f, -0.1f}
+        };
+
+        std::vector<std::vector<int>> to_flip_polygons{
+            {0, 1, 2},
+            {0, 2, 3}
+        };
+
+        vertices.insert(vertices.end(), to_flip_vertices.begin(), to_flip_vertices.end());
+        for (auto& to_flip_polygon : to_flip_polygons)
+        {
+            for (auto& vertex : to_flip_polygon)
+            {
+                vertex = vertex + 4;
+            }
+        }
+        polygons.insert(polygons.end(), to_flip_polygons.begin(), to_flip_polygons.end());
+
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+
+        //ObjMeshIO obj_mesh_io;
+        //obj_mesh_io.save_mesh("./", "test_mesh.obj", mesh);
+
+        // // the 12th edge is what we want to flip
+        auto half_edge = mesh->half_edges[12];
+        bool flipped = mesh->edge_flip_with_intersection_detect(half_edge);
+        ASSERT_EQ(false, flipped);
+    }
+
+    // has no intersection, flipped succeed
+    {
+        auto [vertices, polygons] = get_tetrahedron();
+
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        bool flipped = mesh->edge_flip_with_intersection_detect(mesh->half_edges[0]);
+        ASSERT_EQ(true, flipped);
+    }
+}
+
 };
