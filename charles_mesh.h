@@ -607,6 +607,7 @@ void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_
             file << " " << index + 1;
             iter = iter->next;
         } while (iter != head);
+        file << std::endl;
     }
 
     file.close();

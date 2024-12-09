@@ -293,4 +293,13 @@ TEST(GlobalTest, mesh_edge_flip_with_intersection_detect)
     }
 }
 
+TEST(GlobalTest, mesh_save_obj)
+{
+    std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(bunny_obj_src_path);
+    // obj_mesh_io.save_mesh("./", "bunny.obj", mesh);
+    mesh->save_obj("./", "bunny_mesh_save_obj");
+}
+
 };
