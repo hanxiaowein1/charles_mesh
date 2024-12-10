@@ -7,8 +7,10 @@
 #include <iostream>
 #include <iomanip>
 #include <unordered_map>
+#include <functional>
 #include "charles_bvh.h"
 #include "mesh_type.h"
+#include "quadric_error_metrics.h"
 
 namespace charles_mesh
 {
@@ -24,7 +26,26 @@ public:
     VData position;
     std::shared_ptr<HalfEdge<VData>> half_edge;
     std::shared_ptr<Vertex<VData>> deep_copy();
+    // NOTE: current not support R with void type
+    template<typename R, typename... Args>
+    std::vector<R> handle_in_edge(std::function<R(std::shared_ptr<HalfEdge<VData>>, Args...)> callback, Args... args);
 };
+
+template<typename VData>
+template<typename R, typename... Args>
+std::vector<R> Vertex<VData>::handle_in_edge(std::function<R(std::shared_ptr<HalfEdge<VData>>, Args...)> callback, Args... args)
+{
+    std::vector<R> ret;
+    auto start_in_edge = this->half_edge;
+    auto in_edge_iter = start_in_edge;
+    do
+    {
+        R res = callback(in_edge_iter, args...);
+        ret.emplace_back(res);
+        in_edge_iter = in_edge_iter->next->opposite;
+    } while (in_edge_iter != start_in_edge);
+    return ret;
+}
 
 template <typename VData = Point3D>
 class Face : public Object<VData>
@@ -37,6 +58,11 @@ private:
     double min_z = std::numeric_limits<double>::max();
     double max_z = std::numeric_limits<double>::min();
     bool is_valid = false;
+    std::vector<double> m_plane;
+    VData m_normal;
+    bool normal_initialized = false;
+    VData calculate_normal();
+    std::vector<double> calculate_plane();
 public:
     std::shared_ptr<HalfEdge<VData>> half_edge;
     virtual double get_min_x();
@@ -50,21 +76,30 @@ public:
     virtual bool point_inside(const VData& point);
     bool intersect(const VData& point1, const VData& point2, VData& intersect_p);
     VData normal();
+    void update_normal();
     // [a, b, c, d] of ax + by + cz + d = 0
     std::vector<double> plane();
+    void update_plane();
     std::shared_ptr<Face> deep_copy();
 };
-
 
 template<typename VData = Point3D>
 class HalfEdge
 {
+private:
+    // TODO: metrics is computed by vertex, so half edge and it's opposite has save metrics, need to avoid duplicate computation
+    VData m_quadric_error_metrics_point;
+    double m_quadric_error_metrics;
+    bool quadric_error_metrics_initialized = false;
 public:
     std::shared_ptr<Vertex<VData>>   vertex;
     std::shared_ptr<Face<VData>>     face;
     std::shared_ptr<HalfEdge<VData>> next;
     std::shared_ptr<HalfEdge<VData>> prev;
     std::shared_ptr<HalfEdge<VData>> opposite;
+    std::tuple<VData, double> quadric_error_metrics();
+    std::tuple<VData, double> calculate_quadric_error_metrics();
+    void update_quadric_error_metrics();
 };
 
 template<typename VData = Point3D>
@@ -89,6 +124,9 @@ public:
     // bool intersect(const std::vector<int>& polygon);
     bool intersect(std::shared_ptr<Face<VData>> polygon);
     void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
+    // surface simplification using quadric error metrics
+    void edge_collapse();
+    void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
 };
 
 
@@ -125,13 +163,13 @@ std::shared_ptr<Face<VData>> Face<VData>::deep_copy()
 }
 
 template <typename VData>
-VData Face<VData>::normal()
+VData Face<VData>::calculate_normal()
 {
     // use first three point to calculate normal
     VData face_normal;
     auto iter = this->half_edge;
     std::vector<VData> points;
-    for(int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++)
     {
         points.emplace_back(iter->vertex->position);
         iter = iter->next;
@@ -142,7 +180,7 @@ VData Face<VData>::normal()
 }
 
 template <typename VData>
-std::vector<double> Face<VData>::plane()
+std::vector<double> Face<VData>::calculate_plane()
 {
     auto normal = this->normal();
     std::vector<double> equation(4);
@@ -152,6 +190,39 @@ std::vector<double> Face<VData>::plane()
     equation[2] = normal[2];
     equation[3] = -(normal[0] * point.x + normal[1] * point.y + normal[2] * point.z);
     return equation;
+}
+
+template <typename VData>
+VData Face<VData>::normal()
+{
+    if (!this->normal_initialized)
+    {
+        this->update_normal();
+    }
+    return this->m_normal;
+}
+
+template <typename VData>
+void Face<VData>::update_normal()
+{
+    this->normal_initialized = true;
+    this->m_normal = this->calculate_normal();
+}
+
+template <typename VData>
+void Face<VData>::update_plane()
+{
+    this->m_plane = this->calculate_plane();
+}
+
+template <typename VData>
+std::vector<double> Face<VData>::plane()
+{
+    if (this->m_plane.size() == 0)
+    {
+        this->m_plane = this->calculate_plane();
+    }
+    return this->m_plane;
 }
 
 template <typename VData>
@@ -366,6 +437,59 @@ void Face<VData>::update_bounding()
 }
 
 template <typename VData>
+std::tuple<VData, double> HalfEdge<VData>::quadric_error_metrics()
+{
+    if (!this->quadric_error_metrics_initialized)
+    {
+        this->update_quadric_error_metrics();
+    }
+    return { this->m_quadric_error_metrics_point, this->m_quadric_error_metrics };
+}
+
+template <typename VData>
+std::tuple<VData, double> HalfEdge<VData>::calculate_quadric_error_metrics()
+{
+    const auto& vertex1 = this->prev->vertex;
+    const auto& vertex2 = this->vertex;
+    auto lambda_func = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> std::vector<double> {
+        // get face
+        auto face = in_edge->face;
+        // get plane
+        auto plane = face->plane();
+        return plane;
+    };
+    std::function<std::vector<double>(std::shared_ptr<HalfEdge<VData>>)> func = lambda_func;
+    std::vector<std::vector<double>> planes1 = vertex1->handle_in_edge(func);
+    //std::vector<std::vector<double>> planes1 = handle_in_edge(vertex1, func);
+    //std::vector<std::vector<double>> planes2 = handle_in_edge(vertex2, func);
+    std::vector<std::vector<double>> planes2 = vertex2->handle_in_edge(func);
+    auto planes = planes1;
+    planes.insert(planes.end(), planes2.begin(), planes2.end());
+
+    // calculate quadric error metrics
+    {
+        std::vector<std::tuple<double, double, double, double>> inner_planes;
+        for (auto plane : planes)
+        {
+            inner_planes.emplace_back(std::make_tuple(plane[0], plane[1], plane[2], plane[3]));
+        }
+        auto [x_value, y_value, z_value, metrics] = ::quadric_error_metrics(inner_planes);
+        VData point;
+        point[0] = x_value;
+        point[1] = y_value;
+        point[2] = z_value;
+        return { point, metrics };
+    }
+}
+
+template <typename VData>
+void HalfEdge<VData>::update_quadric_error_metrics()
+{
+    this->quadric_error_metrics_initialized = true;
+    std::tie(this->m_quadric_error_metrics_point, this->m_quadric_error_metrics) = this->calculate_quadric_error_metrics();
+}
+
+template <typename VData>
 void Mesh<VData>::init(const std::vector<VData>& vertices, const std::vector<std::vector<int>>& polygons)
 {
     bool first_vertex = true, first_edge = true, first_face = true;
@@ -486,11 +610,11 @@ bool Mesh<VData>::edge_flip_with_intersection_detect(std::shared_ptr<HalfEdge<VD
  * @brief flip edge, but take attention, this is based triangle, could not used on other polygon
  *     v1
  *    /  ^
- * e1/    \e3
+ * e1/ f1 \e3
  *  v      \
  * v2  -e2-> v3
  *  \ <-e4- ^
- * e5\     / e6
+ * e5\  f2 / e6
  *    v   /
  *     v4
  * @param he: halfedge
@@ -542,6 +666,15 @@ void Mesh<VData>::edge_flip(std::shared_ptr<HalfEdge<VData>> he)
     // change the half edge of vertex(seems no need to change)
 
     // change the half edge of face(still no need to change)
+
+    // update face normal and plane
+    f1->update_normal();
+    f1->update_bounding();
+    f1->update_plane();
+
+    f2->update_normal();
+    f2->update_bounding();
+    f2->update_plane();
 }
 
 template <typename VData>
@@ -612,6 +745,98 @@ void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_
 
     file.close();
 }
+
+/**
+ * @brief 
+
+ * @tparam VData 
+ */
+template <typename VData>
+void Mesh<VData>::edge_collapse()
+{
+
+}
+
+/**
+ * @brief e2 is for collapse, can be considered as next sub processes:
+ * (1) all edge connected to v3 changed to v2(except edge for deletion, e2, e6)
+ * (2) change half edge connection
+ * (3) delete all useless edge(e1~e6) and vertex(v3) (may be no need to, shared_ptr will auto release)
+ * (4) update e2 position
+ *     v1
+ *    /  ^
+ * e1/ f1 \e3
+ *  v      \
+ * v2  -e2-> v3
+ *  \ <-e4- ^
+ * e5\  f2 / e6
+ *    v   /
+ *     v4
+ * @tparam VData 
+ * @param half_edge: edge to be collapsed
+ */
+template <typename VData>
+void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
+{
+    auto e1 = half_edge->prev;
+    auto e2 = half_edge;
+    auto e3 = half_edge->next;
+    auto e4 = e2->opposite;
+    auto e5 = e4->next;
+    auto e6 = e5->next;
+
+    auto v1 = e3->vertex;
+    auto v2 = e1->vertex;
+    auto v3 = e2->vertex;
+    auto v4 = e5->vertex;
+
+    auto f1 = e2->face;
+    auto f2 = e4->face;
+
+    // change edge that point to v3 to v2
+    auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
+        if (in_edge == e2 || in_edge == e6)
+        {
+            return false;
+        }
+        in_edge->vertex = vertex_point_to;
+        return true;
+    };
+    std::function<bool(decltype(v2->half_edge), decltype(v2))> change_point_vertex_func = lambda_func1;
+    // NOTE: WHY this is not work?
+     //handle_in_edge(v3, lambda_func1, v2);
+    v3->handle_in_edge<bool, decltype(v2)>(lambda_func1, v2);
+    //handle_in_edge<VData, bool, decltype(v2)>(v3, lambda_func1, v2);
+
+    // change half edge
+    e1->opposite->opposite = e3->opposite;
+    e3->opposite->opposite = e1->opposite;
+    e5->opposite->opposite = e6->opposite;
+    e6->opposite->opposite = e5->opposite;
+
+    //v2->position = e2->
+    auto [position, metrics] = e2->quadric_error_metrics();
+    v2->position = position;
+
+    // update the properties of face and half edge
+    auto lambda_func2 = [&](decltype(v2->half_edge) in_edge) -> bool {
+        in_edge->face->update_bounding();
+        in_edge->face->update_normal();
+        in_edge->face->update_plane();
+        auto edge_iter = in_edge;
+        do
+        {
+            edge_iter->update_quadric_error_metrics();
+            edge_iter = edge_iter->next;
+        } while (edge_iter != in_edge);
+        return true;
+    };
+    std::function<bool(decltype(v2->half_edge))> update_properties_func = lambda_func2;
+    v2->handle_in_edge(update_properties_func);
+    //handle_in_edge(v2, update_properties_func);
+
+}
+
 
 };
 

@@ -7,17 +7,27 @@ set(CMAKE_PREFIX_PATH "D:\\OwnLibrary" ${CMAKE_PREFIX_PATH})
 
 project(charles_mesh)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(gmp REQUIRED IMPORTED_TARGET gmp)
+# target_link_libraries(hello_world PkgConfig::gmp)
+
+find_package(SymEngine CONFIG REQUIRED)
+find_package(hello_symengine)
+
+# target_link_libraries(hello_world symengine)
+
 add_executable(
     ${PROJECT_NAME}_test
     mesh_factory.cpp
     charles_mesh.cpp
     charles_bvh.cpp
     simple_math.cpp
+    quadric_error_metrics.cpp
     mesh_type_test.cpp
     unit_test.cpp
     charles_mesh_test.cpp)
 find_package(GTest CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock)
+target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine)
 
 
 # this is for export libary for external use
@@ -29,9 +39,10 @@ add_library(
     charles_mesh.cpp
     charles_bvh.cpp
     simple_math.cpp
+    quadric_error_metrics.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock)
+target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine)
 
 # 引入要用到的 CMake 模块
 include(CMakePackageConfigHelpers)

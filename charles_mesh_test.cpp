@@ -302,4 +302,13 @@ TEST(GlobalTest, mesh_save_obj)
     mesh->save_obj("./", "bunny_mesh_save_obj");
 }
 
+TEST(GlobalTest, edge_collapse)
+{
+    std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(bunny_obj_src_path);
+    //mesh->edge_collapse();
+    mesh->edge_collapse(mesh->e_head);
+}
+
 };
