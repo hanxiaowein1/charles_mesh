@@ -7,14 +7,19 @@
 #include <iostream>
 #include <iomanip>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
+#include <algorithm>
+#include <limits>
 #include "charles_bvh.h"
 #include "mesh_type.h"
 #include "quadric_error_metrics.h"
+#include "charles_sort.h"
 
 namespace charles_mesh
 {
 
+void printProgress(double percentage);
 
 template <typename VData>
 class HalfEdge;
@@ -29,6 +34,7 @@ public:
     // NOTE: current not support R with void type
     template<typename R, typename... Args>
     std::vector<R> handle_in_edge(std::function<R(std::shared_ptr<HalfEdge<VData>>, Args...)> callback, Args... args);
+    void reset();
 };
 
 template<typename VData>
@@ -81,6 +87,7 @@ public:
     std::vector<double> plane();
     void update_plane();
     std::shared_ptr<Face> deep_copy();
+    void reset();
 };
 
 template<typename VData = Point3D>
@@ -100,6 +107,32 @@ public:
     std::tuple<VData, double> quadric_error_metrics();
     std::tuple<VData, double> calculate_quadric_error_metrics();
     void update_quadric_error_metrics();
+    void update_quadric_error_metrics(double metrics);
+    void reset();
+};
+
+template<typename VData = Point3D>
+class EdgeMetricsComparator
+{
+public:
+    bool operator()(const std::shared_ptr<HalfEdge<VData>>& a, const std::shared_ptr<HalfEdge<VData>>& b)
+    {
+        if(a == nullptr && b == nullptr)
+        {
+            return true;
+        }
+        if(a == nullptr)
+        {
+            return false;
+        }
+        if(b == nullptr)
+        {
+            return true;
+        }
+        auto [a_point, a_metrics] = a->quadric_error_metrics();
+        auto [b_point, b_metrics] = b->quadric_error_metrics();
+        return a_metrics < b_metrics;
+    }
 };
 
 template<typename VData = Point3D>
@@ -138,6 +171,12 @@ std::shared_ptr<Vertex<VData>> Vertex<VData>::deep_copy()
 }
 
 template<typename VData>
+void Vertex<VData>::reset()
+{
+    this->half_edge = nullptr;
+}
+
+template<typename VData>
 std::shared_ptr<Face<VData>> Face<VData>::deep_copy()
 {
     // we can reuse mesh init function, and get faces[0]
@@ -160,6 +199,12 @@ std::shared_ptr<Face<VData>> Face<VData>::deep_copy()
     Mesh<VData> mesh(vertices, polygons);
     auto new_face = mesh.faces[0];
     return new_face;
+}
+
+template<typename VData>
+void Face<VData>::reset()
+{
+    this->half_edge = nullptr;
 }
 
 template <typename VData>
@@ -490,6 +535,22 @@ void HalfEdge<VData>::update_quadric_error_metrics()
 }
 
 template <typename VData>
+void HalfEdge<VData>::update_quadric_error_metrics(double metrics)
+{
+    this->m_quadric_error_metrics = metrics;
+}
+
+template <typename VData>
+void HalfEdge<VData>::reset()
+{
+    this->vertex = nullptr;
+    this->face = nullptr;
+    this->next = nullptr;
+    this->prev = nullptr;
+    this->opposite = nullptr;
+}
+
+template <typename VData>
 void Mesh<VData>::init(const std::vector<VData>& vertices, const std::vector<std::vector<int>>& polygons)
 {
     bool first_vertex = true, first_edge = true, first_face = true;
@@ -754,7 +815,173 @@ void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_
 template <typename VData>
 void Mesh<VData>::edge_collapse()
 {
+    // calculate all metrics of half edge
+    std::vector<std::shared_ptr<HalfEdge<VData>>> sorted_half_edges;
+    sorted_half_edges.insert(sorted_half_edges.end(), this->half_edges.begin(), this->half_edges.end());
+    std::sort(sorted_half_edges.begin(), sorted_half_edges.end(), EdgeMetricsComparator<VData>());
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_edges;
+    std::cout << "after sort" << std::endl;
+    for (int i = 0; i < this->half_edges.size(); i++)
+    {
+        
+        if (i == 32)
+        {
+            std::cout << "catch point" << std::endl;
+        }
+        //printProgress(double(i) / double(half_edges.size() - 1));
+        std::cout << i << "/" << half_edges.size() - 1 << std::endl;
+        // get half edge of max metrics
+        auto half_edge = sorted_half_edges[0];
+        auto e1 = half_edge->prev;
+        auto e1_op = e1->opposite;
+        auto e2 = half_edge;
+        auto e3 = half_edge->next;
+        auto e3_op = e3->opposite;
+        auto e4 = e2->opposite;
+        auto e5 = e4->next;
+        auto e5_op = e5->opposite;
+        auto e6 = e5->next;
+        auto e6_op = e6->opposite;
 
+        if (visited_edges.contains(e1) || visited_edges.contains(e2) || visited_edges.contains(e3) || visited_edges.contains(e4) || visited_edges.contains(e5) || visited_edges.contains(e6))
+        {
+            throw std::exception("why give me visited edges?");
+        }
+
+        auto v1 = e3->vertex;
+        auto v2 = e1->vertex;
+        auto v3 = e2->vertex;
+        auto v4 = e5->vertex;
+
+        auto f1 = e2->face;
+        auto f2 = e4->face;
+
+        // update v2 new position
+        auto [position, metrics] = e2->quadric_error_metrics();
+        v2->position = position;
+
+        // update vertex half edge(v1, v2, v4)
+        if (v1->half_edge == e3)
+        {
+            v1->half_edge = e1_op;
+        }
+        if (v2->half_edge == e1 || v2->half_edge == e4)
+        {
+            v2->half_edge = e5_op;
+        }
+        if (v4->half_edge == e5)
+        {
+            v4->half_edge = e6_op;
+        }
+
+        // change edge that point to v3 to v2
+        auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
+            if (in_edge == e2 || in_edge == e6)
+            {
+                return false;
+            }
+            in_edge->vertex = vertex_point_to;
+            return true;
+        };
+        std::function<bool(decltype(v2->half_edge), decltype(v2))> change_point_vertex_func = lambda_func1;
+        // NOTE: WHY this is not work?
+         //handle_in_edge(v3, lambda_func1, v2);
+        v3->handle_in_edge<bool, decltype(v2)>(lambda_func1, v2);
+        //handle_in_edge<VData, bool, decltype(v2)>(v3, lambda_func1, v2);
+
+        // change half edge of retained
+        e1_op->opposite = e3_op;
+        e3_op->opposite = e1_op;
+        e5_op->opposite = e6_op;
+        e6_op->opposite = e5_op;
+
+        // reset all obseleted edge vertex and face shared_ptr to nullptr(to avoid memory cannot be freed because of loop reference)
+        e1->reset();
+        e1->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e1, EdgeMetricsComparator<VData>());
+        e2->reset();
+        e2->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e2, EdgeMetricsComparator<VData>());
+        e3->reset();
+        e3->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e3, EdgeMetricsComparator<VData>());
+        e4->reset();
+        e4->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e4, EdgeMetricsComparator<VData>());
+        e5->reset();
+        e5->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e5, EdgeMetricsComparator<VData>());
+        e6->reset();
+        e6->update_quadric_error_metrics(std::numeric_limits<double>::max());
+        sort_sorted_vec_with_one_changed(sorted_half_edges, e6, EdgeMetricsComparator<VData>());
+
+        v3->reset();
+        this->vertices.erase(std::remove(this->vertices.begin(), this->vertices.end(), v3), this->vertices.end());
+
+        f1->reset();
+        //this->faces.erase(f1);
+        this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), f1), this->faces.end());
+        f2->reset();
+        //this->faces.erase(f2);
+        this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), f2), this->faces.end());
+
+        // update the properties of face and half edge
+        auto lambda_func2 = [&](decltype(v2->half_edge) in_edge) -> bool {
+            in_edge->face->update_bounding();
+            in_edge->face->update_normal();
+            in_edge->face->update_plane();
+            auto edge_iter = in_edge;
+            do
+            {
+                edge_iter->update_quadric_error_metrics();
+                sort_sorted_vec_with_one_changed(sorted_half_edges, edge_iter, EdgeMetricsComparator<VData>());
+                edge_iter = edge_iter->next;
+            } while (edge_iter != in_edge);
+            return true;
+        };
+        std::function<bool(decltype(v2->half_edge))> update_properties_func = lambda_func2;
+        v2->handle_in_edge(update_properties_func);
+
+        // self error detection
+        std::vector<std::shared_ptr<HalfEdge<VData>>> for_detected_edges{e1_op, e5_op, e6_op, e3_op};
+        std::vector<std::shared_ptr<Vertex<VData>>> for_detected_vertices{ v1, v2, v4 };
+        std::unordered_set<std::shared_ptr<HalfEdge<VData>>> prohibited_edges{ e1, e2, e3, e4, e5, e6 };
+        std::shared_ptr<Vertex<VData>> prohibited_vertex = v3;
+        for (auto for_detected_edge : for_detected_edges)
+        {
+            auto for_detected_edge_iter = for_detected_edge;
+            do
+            {
+                if (prohibited_edges.contains(for_detected_edge_iter))
+                {
+                    throw std::exception("prohibited edges detected!");
+                }
+                if (for_detected_edge_iter->vertex == v3)
+                {
+                    throw std::exception("prohibited vertex detected!");
+                }
+                for_detected_edge_iter = for_detected_edge_iter->next;
+            } while (for_detected_edge_iter != for_detected_edge);
+        }
+        for (auto for_detected_vertex : for_detected_vertices)
+        {
+            auto half_edge_temp_iter = for_detected_vertex->half_edge;
+            do
+            {
+                if (prohibited_edges.contains(half_edge_temp_iter))
+                {
+                    throw std::exception("prohibited edges detected!");
+                }
+                half_edge_temp_iter = half_edge_temp_iter->next;
+            } while (half_edge_temp_iter != for_detected_vertex->half_edge);
+        }
+        visited_edges.emplace(e1);
+        visited_edges.emplace(e2);
+        visited_edges.emplace(e3);
+        visited_edges.emplace(e4);
+        visited_edges.emplace(e5);
+        visited_edges.emplace(e6);
+    }
 }
 
 /**
@@ -778,61 +1005,7 @@ void Mesh<VData>::edge_collapse()
 template <typename VData>
 void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
 {
-    auto e1 = half_edge->prev;
-    auto e2 = half_edge;
-    auto e3 = half_edge->next;
-    auto e4 = e2->opposite;
-    auto e5 = e4->next;
-    auto e6 = e5->next;
 
-    auto v1 = e3->vertex;
-    auto v2 = e1->vertex;
-    auto v3 = e2->vertex;
-    auto v4 = e5->vertex;
-
-    auto f1 = e2->face;
-    auto f2 = e4->face;
-
-    // change edge that point to v3 to v2
-    auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
-        if (in_edge == e2 || in_edge == e6)
-        {
-            return false;
-        }
-        in_edge->vertex = vertex_point_to;
-        return true;
-    };
-    std::function<bool(decltype(v2->half_edge), decltype(v2))> change_point_vertex_func = lambda_func1;
-    // NOTE: WHY this is not work?
-     //handle_in_edge(v3, lambda_func1, v2);
-    v3->handle_in_edge<bool, decltype(v2)>(lambda_func1, v2);
-    //handle_in_edge<VData, bool, decltype(v2)>(v3, lambda_func1, v2);
-
-    // change half edge
-    e1->opposite->opposite = e3->opposite;
-    e3->opposite->opposite = e1->opposite;
-    e5->opposite->opposite = e6->opposite;
-    e6->opposite->opposite = e5->opposite;
-
-    //v2->position = e2->
-    auto [position, metrics] = e2->quadric_error_metrics();
-    v2->position = position;
-
-    // update the properties of face and half edge
-    auto lambda_func2 = [&](decltype(v2->half_edge) in_edge) -> bool {
-        in_edge->face->update_bounding();
-        in_edge->face->update_normal();
-        in_edge->face->update_plane();
-        auto edge_iter = in_edge;
-        do
-        {
-            edge_iter->update_quadric_error_metrics();
-            edge_iter = edge_iter->next;
-        } while (edge_iter != in_edge);
-        return true;
-    };
-    std::function<bool(decltype(v2->half_edge))> update_properties_func = lambda_func2;
-    v2->handle_in_edge(update_properties_func);
     //handle_in_edge(v2, update_properties_func);
 
 }

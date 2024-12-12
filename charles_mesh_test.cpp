@@ -1,6 +1,10 @@
 #include "mesh_factory.h"
 #include "charles_mesh.h"
 #include "unit_test.h"
+#include <cstdlib>
+
+#define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+#define PBWIDTH 60
 
 std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get_tetrahedron()
 {
@@ -304,11 +308,22 @@ TEST(GlobalTest, mesh_save_obj)
 
 TEST(GlobalTest, edge_collapse)
 {
-    std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+     //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
     ObjMeshIO obj_mesh_io;
-    auto mesh = obj_mesh_io.load_mesh(bunny_obj_src_path);
+    auto mesh = obj_mesh_io.load_mesh(small_bunny);
+    //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
     //mesh->edge_collapse();
-    mesh->edge_collapse(mesh->e_head);
+    mesh->edge_collapse();
+    mesh->save_obj("./", "small_bunny");
+}
+
+void printProgress(double percentage) {
+    int val = (int)(percentage * 100);
+    int lpad = (int)(percentage * PBWIDTH);
+    int rpad = PBWIDTH - lpad;
+    printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+    fflush(stdout);
 }
 
 };
