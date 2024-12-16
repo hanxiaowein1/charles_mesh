@@ -11,6 +11,7 @@
 #include <functional>
 #include <algorithm>
 #include <limits>
+#include <boost/functional/hash.hpp>
 #include "charles_bvh.h"
 #include "mesh_type.h"
 #include "quadric_error_metrics.h"
@@ -160,6 +161,7 @@ public:
     // surface simplification using quadric error metrics
     void edge_collapse();
     void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
+    bool is_manifold();
 };
 
 
@@ -823,8 +825,7 @@ void Mesh<VData>::edge_collapse()
     std::cout << "after sort" << std::endl;
     for (int i = 0; i < this->half_edges.size(); i++)
     {
-        
-        if (i == 32)
+        if (i == 31)
         {
             std::cout << "catch point" << std::endl;
         }
@@ -861,18 +862,9 @@ void Mesh<VData>::edge_collapse()
         v2->position = position;
 
         // update vertex half edge(v1, v2, v4)
-        if (v1->half_edge == e3)
-        {
-            v1->half_edge = e1_op;
-        }
-        if (v2->half_edge == e1 || v2->half_edge == e4)
-        {
-            v2->half_edge = e5_op;
-        }
-        if (v4->half_edge == e5)
-        {
-            v4->half_edge = e6_op;
-        }
+        v1->half_edge = e1_op;
+        v2->half_edge = e5_op;
+        v4->half_edge = e6_op;
 
         // change edge that point to v3 to v2
         auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
@@ -1010,6 +1002,48 @@ void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
 
 }
 
+/**
+ * @brief check if mesh is manifold by iff edge shared by two faces. In half edge data structure, edge is natually shared by two faces, by check opposite edge is not empty, and two connected vertex is only connected by two half edges.
+ * 
+ * @tparam VData 
+ * @return true 
+ * @return false 
+ */
+template <typename VData>
+bool Mesh<VData>::is_manifold()
+{
+    std::unordered_map<
+        std::unordered_set<std::shared_ptr<Vertex<VData>>>,
+        int,
+        boost::hash<std::unordered_set<std::shared_ptr<Vertex<VData>>>>
+    > connected_vertex_cache;
+    for (const auto& half_edge : this->half_edges)
+    {
+        if (half_edge->opposite == nullptr)
+        {
+            return false;
+        }
+        std::shared_ptr<Vertex<VData>> start_vertex = half_edge->prev->vertex;
+        std::shared_ptr<Vertex<VData>> end_vertex = half_edge->vertex;
+        //std::pair<std::shared_ptr<Vertex<VData>>, std::shared_ptr<Vertex<VData>>> connected_vertex;
+        std::unordered_set<std::shared_ptr<Vertex<VData>>> connected_vertex{
+            start_vertex, end_vertex
+        };
+        if (connected_vertex_cache.contains(connected_vertex))
+        {
+            connected_vertex_cache.at(connected_vertex)++;
+            if (connected_vertex_cache.at(connected_vertex) > 2)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            connected_vertex_cache.emplace(connected_vertex, 1);
+        }
+    }
+    return true;
+}
 
 };
 

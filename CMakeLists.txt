@@ -13,6 +13,7 @@ pkg_check_modules(gmp REQUIRED IMPORTED_TARGET gmp)
 
 find_package(SymEngine CONFIG REQUIRED)
 find_package(hello_symengine)
+find_package(Boost COMPONENTS functional REQUIRED)
 
 # target_link_libraries(hello_world symengine)
 
@@ -27,7 +28,7 @@ add_executable(
     unit_test.cpp
     charles_mesh_test.cpp)
 find_package(GTest CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine)
+target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
 
 
 # this is for export libary for external use
@@ -42,7 +43,7 @@ add_library(
     quadric_error_metrics.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine)
+target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
 
 # 引入要用到的 CMake 模块
 include(CMakePackageConfigHelpers)

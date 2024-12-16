@@ -2,6 +2,9 @@
 #include "charles_mesh.h"
 #include "unit_test.h"
 #include <cstdlib>
+#include <boost/functional/hash.hpp>
+#include <unordered_set>
+#include <unordered_map>
 
 #define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
 #define PBWIDTH 60
@@ -316,6 +319,73 @@ TEST(GlobalTest, edge_collapse)
     //mesh->edge_collapse();
     mesh->edge_collapse();
     mesh->save_obj("./", "small_bunny");
+}
+
+TEST(GlobalTest, mesh_duplicate_face_detect)
+{
+    std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(small_bunny);
+    std::unordered_set<std::unordered_set<int>, boost::hash<std::unordered_set<int>>> face_cache;
+    std::unordered_map<std::shared_ptr<Vertex<Point3D>>, int> vertex_index_map;
+    for(int i = 0; i < mesh->vertices.size(); i++)
+    {
+        vertex_index_map.emplace(mesh->vertices[i], i);
+    }
+    for (const auto& face : mesh->faces)
+    {
+        std::unordered_set<int> vertex_indices;
+        auto head = face->half_edge;
+        auto iter = head;
+        do
+        {
+            auto vertex_index = vertex_index_map.at(iter->vertex);
+            vertex_indices.emplace(vertex_index);
+            iter = iter->next;
+        } while (iter != head);
+        if(face_cache.contains(vertex_indices))
+        {
+            throw std::exception("duplicate face detected");
+        }
+        else
+        {
+            face_cache.emplace(vertex_indices);
+        }
+    }
+}
+
+TEST(GlobalTest, mesh_is_manifold)
+{
+    // test is manifold
+    {
+        auto [vertices, polygons] = get_tetrahedron();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        ASSERT_EQ(mesh->is_manifold(), true);
+    }
+    // test is not manifold
+    {
+        std::vector<charles_mesh::Point3D> vertices{
+            {0, 0, 0},
+            {1, 0, 0},
+            {0, 1, 0},
+            {0, 0, 1}
+        };
+
+        std::vector<std::vector<int>> polygons{
+            {0, 2, 1},
+            {0, 1, 3},
+            {0, 3, 2},
+        };
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        ASSERT_EQ(mesh->is_manifold(), false);
+    }
+    // test if obj mesh file is manifold
+    {
+        std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
+        ObjMeshIO obj_mesh_io;
+        auto mesh = obj_mesh_io.load_mesh(small_bunny);
+        ASSERT_EQ(true, mesh->is_manifold());
+    }
 }
 
 void printProgress(double percentage) {
