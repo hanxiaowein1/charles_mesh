@@ -98,7 +98,7 @@ void ObjMeshIO<VData>::save_mesh(const std::string& mesh_dir, const std::string&
             }
             else
             {
-                std::cout << "new vertex emplace: " << vertex_count << std::endl;
+                // std::cout << "new vertex emplace: " << vertex_count << std::endl;
                 vertex_index_cache.emplace(std::make_pair(vertex, vertex_count));
                 vertex_index_map.emplace(std::make_pair(vertex_count, vertex));
                 face.emplace_back(vertex_count);

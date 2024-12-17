@@ -13,7 +13,7 @@
 #include <limits>
 #include <boost/functional/hash.hpp>
 #include "charles_bvh.h"
-#include "mesh_type.h"
+#include "basic_type.h"
 #include "quadric_error_metrics.h"
 #include "charles_sort.h"
 
@@ -156,11 +156,13 @@ public:
     bool edge_flip_with_intersection_detect(std::shared_ptr<HalfEdge<VData>> he);
     void init(const std::vector<VData>& vertices, const std::vector<std::vector<int>>& polygons);
     // bool intersect(const std::vector<int>& polygon);
-    bool intersect(std::shared_ptr<Face<VData>> polygon);
+    bool intersect(std::shared_ptr<Face<VData>> polygon, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons = std::unordered_set<std::shared_ptr<Face<VData>>>());
+    bool intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons = std::unordered_set<std::shared_ptr<Face<VData>>>());
     void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
     // surface simplification using quadric error metrics
     void edge_collapse();
     void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
+    bool edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge);
     bool is_manifold();
 };
 
@@ -272,6 +274,15 @@ std::vector<double> Face<VData>::plane()
     return this->m_plane;
 }
 
+/**
+ * @brief requirements: point must in the plane of face
+ * limitation: not support concave polygon, only can be used in convex polygon
+ * 
+ * @tparam VData 
+ * @param point 
+ * @return true 
+ * @return false 
+ */
 template <typename VData>
 bool Face<VData>::point_inside(const VData& point)
 {
@@ -312,8 +323,24 @@ bool Face<VData>::intersect(const VData& point1, const VData& point2, VData& int
     double x0 = point1.x, y0 = point1.y, z0 = point1.z;
     double x1 = point2.x, y1 = point2.y, z1 = point2.z;
     double denominator = a * (x1 - x0) + b * (y1 - y0) + c * (z1 - z0);
-    if (denominator == 0) {
-        return false;  // Line is parallel to the plane
+    // Line is parallel to the plane
+    if (denominator == 0)
+    {
+        // check if line on plane
+        if(a * point1.x + b * point1.y + c * point1.z + d == 0)
+        {
+            // if one the plane, check if one of the point inside face, if inside, then has intersection
+            if(this->point_inside(point1))
+            {
+                return true;
+            }
+            if(this->point_inside(point2))
+            {
+                return true;
+            }
+            return false;
+        }
+        return false;
     }
 
     double t = -(a * x0 + b * y0 + c * z0 + d) / denominator;
@@ -658,10 +685,15 @@ bool Mesh<VData>::edge_flip_with_intersection_detect(std::shared_ptr<HalfEdge<VD
     };
 
     std::shared_ptr<Mesh<VData>> new_mesh(new Mesh<VData>(new_points, new_polygons));
-    if(this->intersect(new_mesh->faces[0]) || this->intersect(new_mesh->faces[1]))
+    std::unordered_set<std::shared_ptr<Face<VData>>> excluded_faces{f1, f2};
+    if (this->intersect(new_mesh->faces, excluded_faces))
     {
         return false;
     }
+    //if(this->intersect(new_mesh->faces[0]) || this->intersect(new_mesh->faces[1]))
+    //{
+    //    return false;
+    //}
 
     // do edge flip
     this->edge_flip(he);
@@ -755,11 +787,15 @@ Mesh<VData>::Mesh(const std::string& mesh_file_path)
  */
 // bool Mesh::intersect(const std::vector<int>& polygon)
 template <typename VData>
-bool Mesh<VData>::intersect(std::shared_ptr<Face<VData>> polygon)
+bool Mesh<VData>::intersect(std::shared_ptr<Face<VData>> polygon, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons)
 {
     std::vector<std::shared_ptr<Object<VData>>> objects;
     for(auto face: this->faces)
     {
+        if (exclude_polygons.contains(face))
+        {
+            continue;
+        }
         objects.emplace_back(std::dynamic_pointer_cast<Object<VData>>(face));
     }
     std::shared_ptr<BVHNode<Object<VData>>> bvh_tree = build_bvh(objects, 0, objects.size());
@@ -767,6 +803,30 @@ bool Mesh<VData>::intersect(std::shared_ptr<Face<VData>> polygon)
     if(bvh_intersect(bvh_tree, object))
     {
         return true;
+    }
+    return false;
+}
+
+template <typename VData>
+bool Mesh<VData>::intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons)
+{
+    std::vector<std::shared_ptr<Object<VData>>> objects;
+    for(auto face: this->faces)
+    {
+        if (exclude_polygons.contains(face)) 
+        {
+            continue;
+        }
+        objects.emplace_back(std::dynamic_pointer_cast<Object<VData>>(face));
+    }
+    std::shared_ptr<BVHNode<Object<VData>>> bvh_tree = build_bvh(objects, 0, objects.size());
+    for(auto polygon: polygons)
+    {
+        std::shared_ptr<Object<VData>> object = std::dynamic_pointer_cast<Object<VData>>(polygon);
+        if(bvh_intersect(bvh_tree, object))
+        {
+            return true;
+        }
     }
     return false;
 }
@@ -825,6 +885,7 @@ void Mesh<VData>::edge_collapse()
     std::cout << "after sort" << std::endl;
     for (int i = 0; i < this->half_edges.size(); i++)
     {
+        // check if collapsed edge will result to mesh intersection
         if (i == 31)
         {
             std::cout << "catch point" << std::endl;
@@ -832,7 +893,16 @@ void Mesh<VData>::edge_collapse()
         //printProgress(double(i) / double(half_edges.size() - 1));
         std::cout << i << "/" << half_edges.size() - 1 << std::endl;
         // get half edge of max metrics
-        auto half_edge = sorted_half_edges[0];
+        std::shared_ptr<HalfEdge<VData>> half_edge;
+        for (int j = 0; j < this->half_edges.size(); j++)
+        {
+            half_edge = sorted_half_edges[j];
+            if (!this->edge_collapse_intersection_detect(half_edge))
+            {
+                break;
+            }
+        }
+        //auto half_edge = sorted_half_edges[0];
         auto e1 = half_edge->prev;
         auto e1_op = e1->opposite;
         auto e2 = half_edge;
@@ -1000,6 +1070,176 @@ void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
 
     //handle_in_edge(v2, update_properties_func);
 
+}
+
+template <typename VData>
+bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge)
+{
+    std::shared_ptr<HalfEdge<VData>> new_half_edge_to_collapse;
+    std::unordered_map<std::shared_ptr<Vertex<VData>>, std::shared_ptr<Vertex<VData>>> old_new_vertex_map;
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_half_edges;
+    auto old_start_vertex = half_edge->prev->vertex;
+    auto old_end_vertex = half_edge->vertex;
+    auto new_start_vertex = std::make_shared<Vertex<VData>>();
+    new_start_vertex->position = old_start_vertex->position;
+    auto new_end_vertex = std::make_shared<Vertex<VData>>();
+    new_end_vertex->position = old_end_vertex->position;
+
+    old_new_vertex_map.emplace(old_start_vertex, new_start_vertex);
+    old_new_vertex_map.emplace(old_end_vertex, new_end_vertex);
+
+    std::vector<std::shared_ptr<Vertex<VData>>> new_vertices;
+    std::vector<std::shared_ptr<HalfEdge<VData>>> new_half_edges;
+    std::vector<std::shared_ptr<Face<VData>>> new_faces;
+    auto copy_face = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        if (visited_half_edges.contains(in_edge))
+        {
+            // already copied
+            return true;
+        }
+        std::vector<std::shared_ptr<HalfEdge<VData>>> temp_new_half_edges;
+        auto in_edge_head = in_edge;
+        auto in_edge_iter = in_edge;
+        std::shared_ptr<Face<VData>> new_face = std::make_shared<Face<VData>>();
+        new_faces.emplace_back(new_face);
+        bool first_edge = true;
+        do
+        {
+            visited_half_edges.emplace(in_edge_iter);
+            // new half edge
+            std::shared_ptr<HalfEdge<VData>> new_edge = std::make_shared<HalfEdge<VData>>();
+            temp_new_half_edges.emplace_back(new_edge);
+            if (in_edge_iter == half_edge)
+            {
+                new_half_edge_to_collapse = new_edge;
+            }
+            if (first_edge)
+            {
+                first_edge = false;
+                new_face->half_edge = new_edge;
+            }
+            new_edge->face = new_face;
+            auto old_vertex = in_edge_iter->vertex;
+            if (old_new_vertex_map.contains(old_vertex))
+            {
+                auto new_vertex = old_new_vertex_map.at(old_vertex);
+                new_edge->vertex = new_vertex;
+            }
+            else
+            {
+                // new vertex if not exists
+                std::shared_ptr<Vertex<VData>> new_vertex = std::make_shared<Vertex<VData>>();
+                new_vertex->half_edge = new_edge;
+                new_vertex->position = old_vertex->position;
+                new_vertices.emplace_back(new_vertex);
+                new_edge->vertex = new_vertex;
+                old_new_vertex_map.emplace(old_vertex, new_vertex);
+            }
+            in_edge_iter = in_edge_iter->next;
+        } while (in_edge_iter != in_edge_head);
+
+        // finish prev and next chain
+        for (int he_index = 0; he_index < temp_new_half_edges.size(); he_index++)
+        {
+            auto he_first = temp_new_half_edges[he_index % (temp_new_half_edges.size())];
+            auto he_second = temp_new_half_edges[(he_index + 1) % (temp_new_half_edges.size())];
+            he_first->next = he_second;
+            he_second->prev = he_first;
+        }
+        new_half_edges.insert(new_half_edges.end(), temp_new_half_edges.begin(), temp_new_half_edges.end());
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> copy_face_func = copy_face;
+
+    old_start_vertex->handle_in_edge(copy_face_func);
+    old_end_vertex->handle_in_edge(copy_face_func);
+
+    // finish opposite
+    for (auto new_he : new_half_edges)
+    {
+        for (auto other_new_he : new_half_edges)
+        {
+            if (new_he->vertex == other_new_he->prev->vertex && new_he->prev->vertex == other_new_he->vertex)
+            {
+                new_he->opposite = other_new_he;
+                other_new_he->opposite = new_he;
+            }
+        }
+    }
+
+    // new half edge collapse
+    auto e1 = half_edge->prev;
+    auto e1_op = e1->opposite;
+    auto e2 = half_edge;
+    auto e3 = half_edge->next;
+    auto e3_op = e3->opposite;
+    auto e4 = e2->opposite;
+    auto e5 = e4->next;
+    auto e5_op = e5->opposite;
+    auto e6 = e5->next;
+    auto e6_op = e6->opposite;
+
+    auto v1 = e3->vertex;
+    auto v2 = e1->vertex;
+    auto v3 = e2->vertex;
+    auto v4 = e5->vertex;
+
+    auto f1 = e2->face;
+    auto f2 = e4->face;
+
+    std::unordered_set<std::shared_ptr<Face<VData>>> excluded_faces;
+    auto get_excluded_faces = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        if (in_edge == e1 || in_edge == e2 || in_edge == e3 || in_edge == e4 || in_edge == e5 || in_edge == e6)
+        {
+            return false;
+        }
+        excluded_faces.emplace(in_edge);
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> get_excluded_faces_func = get_excluded_faces;
+    v1->handle_in_edge(get_excluded_faces_func);
+    v2->handle_in_edge(get_excluded_faces_func);
+    v3->handle_in_edge(get_excluded_faces_func);
+    v4->handle_in_edge(get_excluded_faces_func);
+
+    // update v2 new position
+    auto [position, metrics] = e2->quadric_error_metrics();
+    v2->position = position;
+
+    // update vertex half edge(v1, v2, v4)
+    v1->half_edge = e1_op;
+    v2->half_edge = e5_op;
+    v4->half_edge = e6_op;
+
+    // change edge that point to v3 to v2
+    auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
+        if (in_edge == e2 || in_edge == e6)
+        {
+            return false;
+        }
+        in_edge->vertex = vertex_point_to;
+        return true;
+    };
+    std::function<bool(decltype(v2->half_edge), decltype(v2))> change_point_vertex_func = lambda_func1;
+    // NOTE: WHY this is not work?
+     //handle_in_edge(v3, lambda_func1, v2);
+    v3->handle_in_edge<bool, decltype(v2)>(lambda_func1, v2);
+    //handle_in_edge<VData, bool, decltype(v2)>(v3, lambda_func1, v2);
+
+    // change half edge of retained
+    e1_op->opposite = e3_op;
+    e3_op->opposite = e1_op;
+    e5_op->opposite = e6_op;
+    e6_op->opposite = e5_op;
+
+    new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f1), new_faces.end());
+    new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f2), new_faces.end());
+    // check if mesh has intersection with collapsed edge
+    if (this->intersect(new_faces, excluded_faces))
+    {
+        return true;
+    }
+    return false;
 }
 
 /**

@@ -26,7 +26,8 @@ add_executable(
     quadric_error_metrics.cpp
     mesh_type_test.cpp
     unit_test.cpp
-    charles_mesh_test.cpp)
+    charles_mesh_test.cpp
+    charles_cgal_test.cpp)
 find_package(GTest CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
 
@@ -89,5 +90,6 @@ install(FILES
 install(FILES "${PROJECT_SOURCE_DIR}/charles_bvh.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/charles_mesh.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/mesh_factory.h" DESTINATION include)
-install(FILES "${PROJECT_SOURCE_DIR}/mesh_type.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/basic_type.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/simple_math.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/charles_cgal.h" DESTINATION include)

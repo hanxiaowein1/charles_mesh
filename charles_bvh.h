@@ -8,7 +8,7 @@
 #include <format>
 
 #include "simple_math.h"
-#include "mesh_type.h"
+#include "basic_type.h"
 
 namespace charles_mesh
 {
