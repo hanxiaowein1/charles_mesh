@@ -35,6 +35,7 @@ public:
     // NOTE: current not support R with void type
     template<typename R, typename... Args>
     std::vector<R> handle_in_edge(std::function<R(std::shared_ptr<HalfEdge<VData>>, Args...)> callback, Args... args);
+    std::tuple<std::unordered_set<std::shared_ptr<Vertex<VData>>>, std::unordered_set<std::shared_ptr<Vertex<VData>>>> get_connected_vertices();
     void reset();
 };
 
@@ -52,6 +53,19 @@ std::vector<R> Vertex<VData>::handle_in_edge(std::function<R(std::shared_ptr<Hal
         in_edge_iter = in_edge_iter->next->opposite;
     } while (in_edge_iter != start_in_edge);
     return ret;
+}
+
+template<typename VData>
+std::tuple<std::unordered_set<std::shared_ptr<Vertex<VData>>>, std::unordered_set<std::shared_ptr<Vertex<VData>>>> Vertex<VData>::get_connected_vertices()
+{
+    std::unordered_set<std::shared_ptr<Vertex<VData>>> upstream_vertices;
+    std::unordered_set<std::shared_ptr<Vertex<VData>>> downstream_vertices;
+    auto lambda = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        upstream_vertices.emplace(in_edge->prev->vertex);
+        downstream_vertices.emplace(in_edge->opposite->vertex);
+        return true;
+    };
+    return std::make_tuple(upstream_vertices, downstream_vertices);
 }
 
 template <typename VData = Point3D>
@@ -304,7 +318,7 @@ bool Face<VData>::point_inside(const VData& point)
         else
         {
             VData current_dir = edge.cross(inner_edge);
-            // check if dir is same, if not same, then point is not inside
+            // check if dir is same, if not same, then point is not inside(if dir is zero, then point lying on boundary, we let it not inside)
             if(!first_dir.acute_angle(current_dir))
             {
                 return false;
@@ -335,6 +349,11 @@ bool Face<VData>::intersect(const VData& point1, const VData& point2, VData& int
                 return true;
             }
             if(this->point_inside(point2))
+            {
+                return true;
+            }
+            // there are still another situation, if these two points on boundary of different edges, and by judgement they are all outside of face, but the points between these two points are inner face, so it has intersection
+            if(this->point_inside(center(point1, point2)))
             {
                 return true;
             }
@@ -1211,11 +1230,24 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     v2->half_edge = e5_op;
     v4->half_edge = e6_op;
 
-    // change edge that point to v3 to v2
+    auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
+    std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
+    // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
     auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
         if (in_edge == e2 || in_edge == e6)
         {
             return false;
+        }
+        auto v3_upstream_vertex = in_edge->prev->vertex;
+        if(v2_downstream_vertices.contains(v3_upstream_vertex))
+        {
+            // duplicate, mark as to deleted
+            duplicate_faces.emplace_back(in_edge->face);
+        }
+        auto v3_downstream_vertex = in_edge->opposite->vertex;
+        if(v2->upstream_vertices.contains(v3_downstream_vertex))
+        {
+            duplicate_faces.emplace_back(in_edge->opposite->face);
         }
         in_edge->vertex = vertex_point_to;
         return true;
@@ -1231,6 +1263,12 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     e3_op->opposite = e1_op;
     e5_op->opposite = e6_op;
     e6_op->opposite = e5_op;
+
+    // TODO: delete duplicate face
+    for(auto duplicate_face: duplicate_faces)
+    {
+
+    }
 
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f1), new_faces.end());
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f2), new_faces.end());

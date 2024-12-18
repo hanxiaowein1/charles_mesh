@@ -25,7 +25,7 @@ public:
     }
     bool acute_angle(const Point3D& point)
     {
-        return this->dot(point) >= 0;
+        return this->dot(point) > 0;
     }
     Point3D operator-(const Point3D& point) const
     {
@@ -87,6 +87,16 @@ public:
 };
 
 typedef Point3D Vector3D;
+
+template<typename VData>
+VData center(const VData& point1, const VData& point2)
+{
+    VData ret;
+    ret.x = (point1.x + point2.x) / 2.0f;
+    ret.y = (point1.y + point2.y) / 2.0f;
+    ret.z = (point1.z + point2.z) / 2.0f;
+    return ret;
+}
 
 template<typename VData=Point3D>
 class Object
