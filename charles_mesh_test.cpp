@@ -28,6 +28,52 @@ std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get
     return std::make_pair(vertices, polygons);
 }
 
+// see image/square_pyramid_1.jpg
+std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get_square_pyramid()
+{
+    std::vector<charles_mesh::Point3D> vertices{
+        {0, 0, 0},
+        {1, 0, 0},
+        {0, 1, 0},
+        {1, 1, 0},
+        {0.5f, 0.5f, 1}
+    };
+
+    std::vector<std::vector<int>> polygons{
+        {0, 3, 1},
+        {0, 2, 3},
+        {1, 3, 4},
+        {3, 2, 4},
+        {2, 0, 4},
+        {0, 1, 4}
+    };
+
+    return std::make_pair(vertices, polygons);
+}
+
+// see image/square_pyramid_2.jpg
+std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get_square_pyramid_2()
+{
+    std::vector<charles_mesh::Point3D> vertices{
+        {0, 0, 0},
+        {1, 0, 0},
+        {0, 1, 0},
+        {1, 1, 0},
+        {0.5f, 0.5f, 1}
+    };
+
+    std::vector<std::vector<int>> polygons{
+        {0, 2, 1},
+        {2, 3, 1},
+        {1, 3, 4},
+        {3, 2, 4},
+        {2, 0, 4},
+        {0, 1, 4}
+    };
+
+    return std::make_pair(vertices, polygons);
+}
+
 namespace charles_mesh
 {
 
@@ -208,6 +254,29 @@ TEST(GlobalTest, face_face_intersect)
     }
 }
 
+TEST(GlobalTest, mesh_intersect_with_exclude)
+{
+    auto [vertices, polygons] = get_tetrahedron();
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+    
+    std::vector<Point3D> vertices1{
+        {0.1f, 0.1f, 0.1f},
+        {5, 6, 7},
+        {6, 7, 8},
+    };
+
+    std::vector<std::vector<int>> polygons1{
+        {0, 1, 2}
+    };
+
+    std::shared_ptr<Mesh<Point3D>> mesh1(new Mesh<Point3D>(vertices1, polygons1));
+    auto face1 = mesh1->faces[0];
+
+    ASSERT_EQ(true, mesh->intersect(face1));
+
+    ASSERT_EQ(false, mesh->intersect(face1, { mesh->faces[mesh->faces.size() - 1] }));
+}
+
 TEST(GlobalTest, mesh_intersect)
 {
     // test intersect
@@ -309,17 +378,38 @@ TEST(GlobalTest, mesh_save_obj)
     mesh->save_obj("./", "bunny_mesh_save_obj");
 }
 
-//TEST(GlobalTest, edge_collapse)
-//{
-//     //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
-//    std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
-//    ObjMeshIO obj_mesh_io;
-//    auto mesh = obj_mesh_io.load_mesh(small_bunny);
-//    //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
-//    //mesh->edge_collapse();
-//    mesh->edge_collapse();
-//    mesh->save_obj("./", "small_bunny");
-//}
+TEST(GlobalTest, edge_collapse)
+{
+     //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(small_bunny);
+    //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
+    //mesh->edge_collapse();
+    mesh->edge_collapse();
+    mesh->save_obj("./", "small_bunny");
+}
+
+TEST(GlobalTest, edge_collapse_intersection_detect)
+{
+    // not intersect
+    {
+        auto [vertices, polygons] = get_square_pyramid();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+
+        bool is_intersect = mesh->edge_collapse_intersection_detect(mesh->half_edges[11]);
+        ASSERT_EQ(false, is_intersect);
+    }
+
+    // is intersect
+    {
+        auto [vertices, polygons] = get_square_pyramid_2();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+
+        bool is_intersect = mesh->edge_collapse_intersection_detect(mesh->half_edges[11]);
+        ASSERT_EQ(true, is_intersect);
+    }
+}
 
 TEST(GlobalTest, mesh_duplicate_face_detect)
 {
@@ -385,6 +475,47 @@ TEST(GlobalTest, mesh_is_manifold)
         ObjMeshIO obj_mesh_io;
         auto mesh = obj_mesh_io.load_mesh(small_bunny);
         ASSERT_EQ(true, mesh->is_manifold());
+    }
+}
+
+TEST(GlobalTest, mesh_copy_faces)
+{
+    // copy tetrahedron
+    {
+        auto [vertices, polygons] = get_tetrahedron();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        auto [new_faces, new_half_edges, new_vertices, copied_half_edge] = mesh->copy_faces(mesh->e_head);
+        // test copied size correctness
+        ASSERT_EQ(new_faces.size(), 4);
+        ASSERT_EQ(new_half_edges.size(), 12);
+        ASSERT_EQ(new_vertices.size(), 4);
+        // test half edge copied correctness
+        ASSERT_EQ(mesh->e_head->vertex->position, copied_half_edge->vertex->position);
+        ASSERT_EQ(mesh->e_head->opposite->vertex->position, copied_half_edge->opposite->vertex->position);
+        ASSERT_EQ(mesh->e_head->prev->vertex->position, copied_half_edge->prev->vertex->position);
+        ASSERT_NE(copied_half_edge, mesh->e_head);
+        // test connectness
+        ASSERT_EQ(mesh->e_head->vertex->half_edge->vertex->position, copied_half_edge->vertex->half_edge->vertex->position);
+        ASSERT_EQ(mesh->e_head->vertex->half_edge->vertex->position, copied_half_edge->vertex->position);
+        ObjMeshIO obj_mesh_io;
+        mesh->faces = new_faces;
+        mesh->half_edges = new_half_edges;
+        mesh->vertices = new_vertices;
+        mesh->e_head = copied_half_edge;
+
+        obj_mesh_io.save_mesh("./", "copy_tetrahedra", mesh);
+    }
+}
+
+TEST(GlobalTest, mesh_get_sorround_faces)
+{
+    auto [vertices, polygons] = get_tetrahedron();
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+    auto sorround_faces = mesh->get_sorround_faces(mesh->e_head);
+    for (auto face : mesh->faces)
+    {
+        auto it = std::find(sorround_faces.begin(), sorround_faces.end(), face);
+        ASSERT_NE(it, sorround_faces.end());
     }
 }
 

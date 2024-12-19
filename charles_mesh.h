@@ -172,12 +172,20 @@ public:
     // bool intersect(const std::vector<int>& polygon);
     bool intersect(std::shared_ptr<Face<VData>> polygon, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons = std::unordered_set<std::shared_ptr<Face<VData>>>());
     bool intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons = std::unordered_set<std::shared_ptr<Face<VData>>>());
+    // can save non manifold mesh
     void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
     // surface simplification using quadric error metrics
     void edge_collapse();
     void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
     bool edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge);
     bool is_manifold();
+    std::tuple<
+        std::vector<std::shared_ptr<Face<VData>>>,
+        std::vector<std::shared_ptr<HalfEdge<VData>>>,
+        std::vector<std::shared_ptr<Vertex<VData>>>,
+        std::shared_ptr<HalfEdge<VData>>
+    > copy_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
+    std::unordered_set<std::shared_ptr<Face<VData>>> get_sorround_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
 };
 
 
@@ -838,6 +846,10 @@ bool Mesh<VData>::intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons,
         }
         objects.emplace_back(std::dynamic_pointer_cast<Object<VData>>(face));
     }
+    if (objects.size() == 0)
+    {
+        return false;
+    }
     std::shared_ptr<BVHNode<Object<VData>>> bvh_tree = build_bvh(objects, 0, objects.size());
     for(auto polygon: polygons)
     {
@@ -955,11 +967,25 @@ void Mesh<VData>::edge_collapse()
         v2->half_edge = e5_op;
         v4->half_edge = e6_op;
 
-        // change edge that point to v3 to v2
+        auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
+        std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
+
+        // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
         auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
             if (in_edge == e2 || in_edge == e6)
             {
                 return false;
+            }
+            auto v3_upstream_vertex = in_edge->prev->vertex;
+            if (v2_downstream_vertices.contains(v3_upstream_vertex))
+            {
+                // duplicate, mark as to deleted
+                duplicate_faces.emplace_back(in_edge->face);
+            }
+            auto v3_downstream_vertex = in_edge->opposite->vertex;
+            if (v2_upstream_vertices.contains(v3_downstream_vertex))
+            {
+                duplicate_faces.emplace_back(in_edge->opposite->face);
             }
             in_edge->vertex = vertex_point_to;
             return true;
@@ -975,6 +1001,34 @@ void Mesh<VData>::edge_collapse()
         e3_op->opposite = e1_op;
         e5_op->opposite = e6_op;
         e6_op->opposite = e5_op;
+
+        for (auto duplicate_face : duplicate_faces)
+        {
+            auto half_edge_head = duplicate_face->half_edge;
+            auto half_edge_iter = half_edge_head;
+            std::vector<std::shared_ptr<HalfEdge<VData>>> half_edges_to_delete;
+            do
+            {
+                // change opposite half edge to nullptr first
+                half_edges_to_delete.emplace_back(half_edge_iter);
+                half_edge_iter->opposite->opposite = nullptr;
+                half_edge_iter = half_edge_iter->next;
+            } while (half_edge_iter != half_edge_head);
+            // then delete all the half edge
+            for (auto half_edge_to_delete : half_edges_to_delete)
+            {
+                half_edge_to_delete->face = nullptr;
+                half_edge_to_delete->next = nullptr;
+                half_edge_to_delete->prev = nullptr;
+                half_edge_to_delete->opposite = nullptr;
+                half_edge_to_delete->vertex = nullptr;
+                half_edge_to_delete->update_quadric_error_metrics();
+                sort_sorted_vec_with_one_changed(sorted_half_edges, half_edge_to_delete, EdgeMetricsComparator<VData>());
+            }
+            // then delete face
+            duplicate_face->half_edge = nullptr;
+            this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), duplicate_face), this->faces.end());
+        }
 
         // reset all obseleted edge vertex and face shared_ptr to nullptr(to avoid memory cannot be freed because of loop reference)
         e1->reset();
@@ -1094,103 +1148,13 @@ void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
 template <typename VData>
 bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge)
 {
-    std::shared_ptr<HalfEdge<VData>> new_half_edge_to_collapse;
-    std::unordered_map<std::shared_ptr<Vertex<VData>>, std::shared_ptr<Vertex<VData>>> old_new_vertex_map;
-    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_half_edges;
-    auto old_start_vertex = half_edge->prev->vertex;
-    auto old_end_vertex = half_edge->vertex;
-    auto new_start_vertex = std::make_shared<Vertex<VData>>();
-    new_start_vertex->position = old_start_vertex->position;
-    auto new_end_vertex = std::make_shared<Vertex<VData>>();
-    new_end_vertex->position = old_end_vertex->position;
-
-    old_new_vertex_map.emplace(old_start_vertex, new_start_vertex);
-    old_new_vertex_map.emplace(old_end_vertex, new_end_vertex);
-
-    std::vector<std::shared_ptr<Vertex<VData>>> new_vertices;
-    std::vector<std::shared_ptr<HalfEdge<VData>>> new_half_edges;
-    std::vector<std::shared_ptr<Face<VData>>> new_faces;
-    auto copy_face = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
-        if (visited_half_edges.contains(in_edge))
-        {
-            // already copied
-            return true;
-        }
-        std::vector<std::shared_ptr<HalfEdge<VData>>> temp_new_half_edges;
-        auto in_edge_head = in_edge;
-        auto in_edge_iter = in_edge;
-        std::shared_ptr<Face<VData>> new_face = std::make_shared<Face<VData>>();
-        new_faces.emplace_back(new_face);
-        bool first_edge = true;
-        do
-        {
-            visited_half_edges.emplace(in_edge_iter);
-            // new half edge
-            std::shared_ptr<HalfEdge<VData>> new_edge = std::make_shared<HalfEdge<VData>>();
-            temp_new_half_edges.emplace_back(new_edge);
-            if (in_edge_iter == half_edge)
-            {
-                new_half_edge_to_collapse = new_edge;
-            }
-            if (first_edge)
-            {
-                first_edge = false;
-                new_face->half_edge = new_edge;
-            }
-            new_edge->face = new_face;
-            auto old_vertex = in_edge_iter->vertex;
-            if (old_new_vertex_map.contains(old_vertex))
-            {
-                auto new_vertex = old_new_vertex_map.at(old_vertex);
-                new_edge->vertex = new_vertex;
-            }
-            else
-            {
-                // new vertex if not exists
-                std::shared_ptr<Vertex<VData>> new_vertex = std::make_shared<Vertex<VData>>();
-                new_vertex->half_edge = new_edge;
-                new_vertex->position = old_vertex->position;
-                new_vertices.emplace_back(new_vertex);
-                new_edge->vertex = new_vertex;
-                old_new_vertex_map.emplace(old_vertex, new_vertex);
-            }
-            in_edge_iter = in_edge_iter->next;
-        } while (in_edge_iter != in_edge_head);
-
-        // finish prev and next chain
-        for (int he_index = 0; he_index < temp_new_half_edges.size(); he_index++)
-        {
-            auto he_first = temp_new_half_edges[he_index % (temp_new_half_edges.size())];
-            auto he_second = temp_new_half_edges[(he_index + 1) % (temp_new_half_edges.size())];
-            he_first->next = he_second;
-            he_second->prev = he_first;
-        }
-        new_half_edges.insert(new_half_edges.end(), temp_new_half_edges.begin(), temp_new_half_edges.end());
-        return true;
-    };
-    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> copy_face_func = copy_face;
-
-    old_start_vertex->handle_in_edge(copy_face_func);
-    old_end_vertex->handle_in_edge(copy_face_func);
-
-    // finish opposite
-    for (auto new_he : new_half_edges)
-    {
-        for (auto other_new_he : new_half_edges)
-        {
-            if (new_he->vertex == other_new_he->prev->vertex && new_he->prev->vertex == other_new_he->vertex)
-            {
-                new_he->opposite = other_new_he;
-                other_new_he->opposite = new_he;
-            }
-        }
-    }
+    auto [new_faces, new_half_edges, new_vertices, new_half_edge_to_collapse] = this->copy_faces(half_edge);
 
     // new half edge collapse
-    auto e1 = half_edge->prev;
+    auto e1 = new_half_edge_to_collapse->prev;
     auto e1_op = e1->opposite;
-    auto e2 = half_edge;
-    auto e3 = half_edge->next;
+    auto e2 = new_half_edge_to_collapse;
+    auto e3 = new_half_edge_to_collapse->next;
     auto e3_op = e3->opposite;
     auto e4 = e2->opposite;
     auto e5 = e4->next;
@@ -1206,20 +1170,7 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     auto f1 = e2->face;
     auto f2 = e4->face;
 
-    std::unordered_set<std::shared_ptr<Face<VData>>> excluded_faces;
-    auto get_excluded_faces = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
-        if (in_edge == e1 || in_edge == e2 || in_edge == e3 || in_edge == e4 || in_edge == e5 || in_edge == e6)
-        {
-            return false;
-        }
-        excluded_faces.emplace(in_edge);
-        return true;
-    };
-    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> get_excluded_faces_func = get_excluded_faces;
-    v1->handle_in_edge(get_excluded_faces_func);
-    v2->handle_in_edge(get_excluded_faces_func);
-    v3->handle_in_edge(get_excluded_faces_func);
-    v4->handle_in_edge(get_excluded_faces_func);
+    std::unordered_set<std::shared_ptr<Face<VData>>> excluded_faces = this->get_sorround_faces(half_edge);
 
     // update v2 new position
     auto [position, metrics] = e2->quadric_error_metrics();
@@ -1245,7 +1196,7 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
             duplicate_faces.emplace_back(in_edge->face);
         }
         auto v3_downstream_vertex = in_edge->opposite->vertex;
-        if(v2->upstream_vertices.contains(v3_downstream_vertex))
+        if(v2_upstream_vertices.contains(v3_downstream_vertex))
         {
             duplicate_faces.emplace_back(in_edge->opposite->face);
         }
@@ -1264,10 +1215,30 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     e5_op->opposite = e6_op;
     e6_op->opposite = e5_op;
 
-    // TODO: delete duplicate face
     for(auto duplicate_face: duplicate_faces)
     {
-
+        auto half_edge_head = duplicate_face->half_edge;
+        auto half_edge_iter = half_edge_head;
+        std::vector<std::shared_ptr<HalfEdge<VData>>> half_edges_to_delete;
+        do
+        {
+            // change opposite half edge to nullptr first
+            half_edges_to_delete.emplace_back(half_edge_iter);
+            half_edge_iter->opposite->opposite = nullptr;
+            half_edge_iter = half_edge_iter->next;
+        } while (half_edge_iter != half_edge_head);
+        // then delete all the half edge
+        for (auto half_edge_to_delete : half_edges_to_delete)
+        {
+            half_edge_to_delete->face = nullptr;
+            half_edge_to_delete->next = nullptr;
+            half_edge_to_delete->prev = nullptr;
+            half_edge_to_delete->opposite = nullptr;
+            half_edge_to_delete->vertex = nullptr;
+        }
+        // then delete face
+        duplicate_face->half_edge = nullptr;
+        new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), duplicate_face), new_faces.end());
     }
 
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f1), new_faces.end());
@@ -1322,6 +1293,127 @@ bool Mesh<VData>::is_manifold()
     }
     return true;
 }
+
+template <typename VData>
+std::tuple<
+    std::vector<std::shared_ptr<Face<VData>>>,
+    std::vector<std::shared_ptr<HalfEdge<VData>>>,
+    std::vector<std::shared_ptr<Vertex<VData>>>,
+    std::shared_ptr<HalfEdge<VData>>
+> Mesh<VData>::copy_faces(std::shared_ptr<HalfEdge<VData>> half_edge)
+{
+    std::shared_ptr<HalfEdge<VData>> copied_half_edge;
+    std::unordered_map<std::shared_ptr<Vertex<VData>>, std::shared_ptr<Vertex<VData>>> old_new_vertex_map;
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_half_edges;
+    auto old_start_vertex = half_edge->prev->vertex;
+    auto old_end_vertex = half_edge->vertex;
+    auto new_start_vertex = std::make_shared<Vertex<VData>>();
+    new_start_vertex->position = old_start_vertex->position;
+    auto new_end_vertex = std::make_shared<Vertex<VData>>();
+    new_end_vertex->position = old_end_vertex->position;
+
+    old_new_vertex_map.emplace(old_start_vertex, new_start_vertex);
+    old_new_vertex_map.emplace(old_end_vertex, new_end_vertex);
+
+    std::vector<std::shared_ptr<Vertex<VData>>> new_vertices;
+    new_vertices.emplace_back(new_start_vertex);
+    new_vertices.emplace_back(new_end_vertex);
+    std::vector<std::shared_ptr<HalfEdge<VData>>> new_half_edges;
+    std::vector<std::shared_ptr<Face<VData>>> new_faces;
+    auto copy_face = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        if (visited_half_edges.contains(in_edge))
+        {
+            // already copied
+            return true;
+        }
+        std::vector<std::shared_ptr<HalfEdge<VData>>> temp_new_half_edges;
+        auto in_edge_head = in_edge;
+        auto in_edge_iter = in_edge;
+        std::shared_ptr<Face<VData>> new_face = std::make_shared<Face<VData>>();
+        new_faces.emplace_back(new_face);
+        bool first_edge = true;
+        do
+        {
+            visited_half_edges.emplace(in_edge_iter);
+            // new half edge
+            std::shared_ptr<HalfEdge<VData>> new_edge = std::make_shared<HalfEdge<VData>>();
+            temp_new_half_edges.emplace_back(new_edge);
+            if (in_edge_iter == half_edge)
+            {
+                copied_half_edge = new_edge;
+            }
+            if (first_edge)
+            {
+                first_edge = false;
+                new_face->half_edge = new_edge;
+            }
+            new_edge->face = new_face;
+            auto old_vertex = in_edge_iter->vertex;
+            if (old_new_vertex_map.contains(old_vertex))
+            {
+                auto new_vertex = old_new_vertex_map.at(old_vertex);
+                new_edge->vertex = new_vertex;
+                new_vertex->half_edge = new_edge;
+            }
+            else
+            {
+                // new vertex if not exists
+                std::shared_ptr<Vertex<VData>> new_vertex = std::make_shared<Vertex<VData>>();
+                new_vertex->half_edge = new_edge;
+                new_vertex->position = old_vertex->position;
+                new_vertices.emplace_back(new_vertex);
+                new_edge->vertex = new_vertex;
+                old_new_vertex_map.emplace(old_vertex, new_vertex);
+            }
+            in_edge_iter = in_edge_iter->next;
+        } while (in_edge_iter != in_edge_head);
+
+        // finish prev and next chain
+        for (int he_index = 0; he_index < temp_new_half_edges.size(); he_index++)
+        {
+            auto he_first = temp_new_half_edges[he_index % (temp_new_half_edges.size())];
+            auto he_second = temp_new_half_edges[(he_index + 1) % (temp_new_half_edges.size())];
+            he_first->next = he_second;
+            he_second->prev = he_first;
+        }
+        new_half_edges.insert(new_half_edges.end(), temp_new_half_edges.begin(), temp_new_half_edges.end());
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> copy_face_func = copy_face;
+
+    old_start_vertex->handle_in_edge(copy_face_func);
+    old_end_vertex->handle_in_edge(copy_face_func);
+
+    // finish opposite
+    for (auto new_he : new_half_edges)
+    {
+        for (auto other_new_he : new_half_edges)
+        {
+            if (new_he->vertex == other_new_he->prev->vertex && new_he->prev->vertex == other_new_he->vertex)
+            {
+                new_he->opposite = other_new_he;
+                other_new_he->opposite = new_he;
+            }
+        }
+    }
+
+    return std::make_tuple(new_faces, new_half_edges, new_vertices, copied_half_edge);
+}
+
+template <typename VData>
+std::unordered_set<std::shared_ptr<Face<VData>>> Mesh<VData>::get_sorround_faces(std::shared_ptr<HalfEdge<VData>> half_edge)
+{
+    std::unordered_set<std::shared_ptr<Face<VData>>> sorround_faces;
+    auto get_excluded_faces = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        sorround_faces.emplace(in_edge->face);
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> get_excluded_faces_func = get_excluded_faces;
+    half_edge->vertex->handle_in_edge(get_excluded_faces_func);
+    half_edge->prev->vertex->handle_in_edge(get_excluded_faces_func);
+    return sorround_faces;
+}
+
 
 };
 
