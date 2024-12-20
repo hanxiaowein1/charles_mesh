@@ -36,6 +36,8 @@ public:
     template<typename R, typename... Args>
     std::vector<R> handle_in_edge(std::function<R(std::shared_ptr<HalfEdge<VData>>, Args...)> callback, Args... args);
     std::tuple<std::unordered_set<std::shared_ptr<Vertex<VData>>>, std::unordered_set<std::shared_ptr<Vertex<VData>>>> get_connected_vertices();
+    // NOTE: only can be used in triangle mesh
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> get_opposite_half_edges();
     void reset();
 };
 
@@ -65,8 +67,24 @@ std::tuple<std::unordered_set<std::shared_ptr<Vertex<VData>>>, std::unordered_se
         downstream_vertices.emplace(in_edge->opposite->vertex);
         return true;
     };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> lambda_func = lambda;
+    this->handle_in_edge(lambda_func);
     return std::make_tuple(upstream_vertices, downstream_vertices);
 }
+
+template <typename VData>
+std::unordered_set<std::shared_ptr<HalfEdge<VData>>> Vertex<VData>::get_opposite_half_edges()
+{
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> opposite_half_edges;
+    auto lambda = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        opposite_half_edges.emplace(in_edge->next->next);
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> lambda_func = lambda;
+    this->handle_in_edge(lambda_func);
+    return opposite_half_edges;
+}
+
 
 template <typename VData = Point3D>
 class Face : public Object<VData>
@@ -928,6 +946,11 @@ void Mesh<VData>::edge_collapse()
         for (int j = 0; j < this->half_edges.size(); j++)
         {
             half_edge = sorted_half_edges[j];
+            //auto [position, metrics] = half_edge->quadric_error_metrics();
+            //if (metrics == std::numeric_limits<double>::max())
+            //{
+            //    return;
+            //}
             if (!this->edge_collapse_intersection_detect(half_edge))
             {
                 break;
@@ -967,7 +990,7 @@ void Mesh<VData>::edge_collapse()
         v2->half_edge = e5_op;
         v4->half_edge = e6_op;
 
-        auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
+        auto v2_opposite_half_edges = v2->get_opposite_half_edges();
         std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
 
         // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
@@ -976,16 +999,14 @@ void Mesh<VData>::edge_collapse()
             {
                 return false;
             }
-            auto v3_upstream_vertex = in_edge->prev->vertex;
-            if (v2_downstream_vertices.contains(v3_upstream_vertex))
+            auto v3_opposite_half_edge = in_edge->next->next;
+            if (v2_opposite_half_edges.contains(v3_opposite_half_edge->opposite))
             {
-                // duplicate, mark as to deleted
-                duplicate_faces.emplace_back(in_edge->face);
-            }
-            auto v3_downstream_vertex = in_edge->opposite->vertex;
-            if (v2_upstream_vertices.contains(v3_downstream_vertex))
-            {
-                duplicate_faces.emplace_back(in_edge->opposite->face);
+                // duplicate detected
+                if (in_edge->face != f1 && in_edge->face != f2)
+                {
+                    duplicate_faces.emplace_back(in_edge->face);
+                }
             }
             in_edge->vertex = vertex_point_to;
             return true;
@@ -1011,7 +1032,11 @@ void Mesh<VData>::edge_collapse()
             {
                 // change opposite half edge to nullptr first
                 half_edges_to_delete.emplace_back(half_edge_iter);
-                half_edge_iter->opposite->opposite = nullptr;
+                // if happen this, that means duplicate faces has connection, change one face affect another face, but because it's connected, so the another connected face will definitely delete its opposite
+                if (half_edge_iter->opposite != nullptr)
+                {
+                    half_edge_iter->opposite->opposite = nullptr;
+                }
                 half_edge_iter = half_edge_iter->next;
             } while (half_edge_iter != half_edge_head);
             // then delete all the half edge
@@ -1181,7 +1206,8 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     v2->half_edge = e5_op;
     v4->half_edge = e6_op;
 
-    auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
+    // auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
+    auto v2_opposite_half_edges = v2->get_opposite_half_edges();
     std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
     // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
     auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
@@ -1189,16 +1215,14 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
         {
             return false;
         }
-        auto v3_upstream_vertex = in_edge->prev->vertex;
-        if(v2_downstream_vertices.contains(v3_upstream_vertex))
+        auto v3_opposite_half_edge = in_edge->next->next;
+        if (v2_opposite_half_edges.contains(v3_opposite_half_edge->opposite))
         {
-            // duplicate, mark as to deleted
-            duplicate_faces.emplace_back(in_edge->face);
-        }
-        auto v3_downstream_vertex = in_edge->opposite->vertex;
-        if(v2_upstream_vertices.contains(v3_downstream_vertex))
-        {
-            duplicate_faces.emplace_back(in_edge->opposite->face);
+            // duplicate detected
+            if (in_edge->face != f1 && in_edge->face != f2)
+            {
+                duplicate_faces.emplace_back(in_edge->face);
+            }
         }
         in_edge->vertex = vertex_point_to;
         return true;
@@ -1224,7 +1248,11 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
         {
             // change opposite half edge to nullptr first
             half_edges_to_delete.emplace_back(half_edge_iter);
-            half_edge_iter->opposite->opposite = nullptr;
+            // if happen this, that means duplicate faces has connection, change one face affect another face, but because it's connected, so the another connected face will definitely delete its opposite
+            if (half_edge_iter->opposite != nullptr)
+            {
+                half_edge_iter->opposite->opposite = nullptr;
+            }
             half_edge_iter = half_edge_iter->next;
         } while (half_edge_iter != half_edge_head);
         // then delete all the half edge

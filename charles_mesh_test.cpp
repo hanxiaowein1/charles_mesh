@@ -378,16 +378,21 @@ TEST(GlobalTest, mesh_save_obj)
     mesh->save_obj("./", "bunny_mesh_save_obj");
 }
 
-TEST(GlobalTest, edge_collapse)
+TEST(GlobalTest, edge_collapse_small_bunny)
 {
-     //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
     std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
     ObjMeshIO obj_mesh_io;
     auto mesh = obj_mesh_io.load_mesh(small_bunny);
     //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
     //mesh->edge_collapse();
     mesh->edge_collapse();
-    mesh->save_obj("./", "small_bunny");
+    mesh->save_obj("./", "collapse_small_bunny");
+}
+
+TEST(GlobalTest, edge_collapse_square_pyramid)
+{
+
 }
 
 TEST(GlobalTest, edge_collapse_intersection_detect)
@@ -396,8 +401,17 @@ TEST(GlobalTest, edge_collapse_intersection_detect)
     {
         auto [vertices, polygons] = get_square_pyramid();
         std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
-
-        bool is_intersect = mesh->edge_collapse_intersection_detect(mesh->half_edges[11]);
+        // get v2->v3
+        std::shared_ptr<HalfEdge<Point3D>> v2;
+        for (auto half_edge : mesh->half_edges)
+        {
+            if (half_edge->vertex->position == vertices[3] && half_edge->prev->vertex->position == vertices[4])
+            {
+                v2 = half_edge;
+                break;
+            }
+        }
+        bool is_intersect = mesh->edge_collapse_intersection_detect(v2);
         ASSERT_EQ(false, is_intersect);
     }
 
@@ -405,9 +419,18 @@ TEST(GlobalTest, edge_collapse_intersection_detect)
     {
         auto [vertices, polygons] = get_square_pyramid_2();
         std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
-
-        bool is_intersect = mesh->edge_collapse_intersection_detect(mesh->half_edges[11]);
-        ASSERT_EQ(true, is_intersect);
+        // get v2->v3
+        std::shared_ptr<HalfEdge<Point3D>> v2;
+        for (auto half_edge : mesh->half_edges)
+        {
+            if (half_edge->vertex->position == vertices[3] && half_edge->prev->vertex->position == vertices[4])
+            {
+                v2 = half_edge;
+                break;
+            }
+        }
+        bool is_intersect = mesh->edge_collapse_intersection_detect(v2);
+        ASSERT_EQ(false, is_intersect);
     }
 }
 
