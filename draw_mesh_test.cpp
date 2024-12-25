@@ -1,0 +1,34 @@
+#include "unit_test.h"
+#include "basic_type.h"
+
+#include "triangles_shower.h"
+
+extern std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get_tetrahedron();
+
+namespace charles_mesh
+{
+
+TEST(GlobalTest, show_mesh_test)
+{
+    // replace V with Point3D
+    auto [vertices, triangles] = get_tetrahedron();
+    std::vector<Point3D> normals{
+        {0, 0, -1},
+        {0, -1, 0},
+        {-1, 0, 0},
+        {0.577350f, 0.577350f, 0.577350f}
+    };
+    DisplayInfo<Point3D, std::vector<int>> display_info;
+    display_info.vertices = vertices;
+    display_info.normals = normals;
+    display_info.triangles = triangles;
+    display_info.r = 0.5f;
+    display_info.g = 0.5f;
+    display_info.b = 0.5f;
+
+    std::vector<DisplayInfo<Point3D, std::vector<int>>> mul_display_info{ display_info };
+    show_triangles(mul_display_info);
+}
+
+};
+

@@ -395,6 +395,7 @@ TEST(GlobalTest, edge_collapse_square_pyramid)
 
 }
 
+// see image/square_pyramid_edge_collapse.jpg for edge details
 TEST(GlobalTest, edge_collapse_intersection_detect)
 {
     // not intersect
@@ -528,17 +529,120 @@ TEST(GlobalTest, mesh_copy_faces)
 
         obj_mesh_io.save_mesh("./", "copy_tetrahedra", mesh);
     }
+    // copy square pyramid
+    {
+        auto [vertices, polygons] = get_square_pyramid_2();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        // get half edge from (0, 0, 0) -> (0.5, 0.5, 1)
+        Point3D point1{ 0, 0, 0 };
+        Point3D point2{ 0.5f, 0.5f, 1 };
+        std::shared_ptr<HalfEdge<Point3D>> desired_half_edge;
+        for (auto half_edge : mesh->half_edges)
+        {
+            if (half_edge->prev->vertex->position == point1 && half_edge->vertex->position == point2)
+            {
+                desired_half_edge = half_edge;
+                break;
+            }
+        }
+        auto [new_faces, new_half_edges, new_vertices, copied_half_edge] = mesh->copy_faces(desired_half_edge);
+        std::unordered_set<Point3D, Point3DHashFunction> undesired_face{
+            {1, 0, 0},
+            {0, 1, 0},
+            {1, 1, 0}
+        };
+        std::vector<std::unordered_set<Point3D, Point3DHashFunction>> desired_faces{
+            {vertices[polygons[0][0]], vertices[polygons[0][1]], vertices[polygons[0][2]]},
+            {vertices[polygons[2][0]], vertices[polygons[2][1]], vertices[polygons[2][2]]},
+            {vertices[polygons[3][0]], vertices[polygons[3][1]], vertices[polygons[3][2]]},
+            {vertices[polygons[4][0]], vertices[polygons[4][1]], vertices[polygons[4][2]]},
+            {vertices[polygons[5][0]], vertices[polygons[5][1]], vertices[polygons[5][2]]},
+        };
+        std::vector<std::unordered_set<Point3D, Point3DHashFunction>> faces;
+        for (auto sorround_face : new_faces)
+        {
+            auto edge_iter = sorround_face->half_edge;
+            auto edge_head = edge_iter;
+            std::unordered_set<Point3D, Point3DHashFunction> face;
+            do
+            {
+                face.emplace(edge_iter->vertex->position);
+                edge_iter = edge_iter->next;
+            } while (edge_iter != edge_head);
+            faces.emplace_back(face);
+        }
+        ASSERT_EQ(faces.size(), 5);
+        auto it = std::find(faces.begin(), faces.end(), undesired_face);
+        ASSERT_EQ(it, faces.end());
+        for (auto desired_face : desired_faces)
+        {
+            auto it = std::find(faces.begin(), faces.end(), desired_face);
+            ASSERT_NE(it, faces.end());
+        }
+    }
 }
 
 TEST(GlobalTest, mesh_get_sorround_faces)
 {
-    auto [vertices, polygons] = get_tetrahedron();
-    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
-    auto sorround_faces = mesh->get_sorround_faces(mesh->e_head);
-    for (auto face : mesh->faces)
     {
-        auto it = std::find(sorround_faces.begin(), sorround_faces.end(), face);
-        ASSERT_NE(it, sorround_faces.end());
+        auto [vertices, polygons] = get_tetrahedron();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        auto sorround_faces = mesh->get_sorround_faces(mesh->e_head);
+        for (auto face : mesh->faces)
+        {
+            auto it = std::find(sorround_faces.begin(), sorround_faces.end(), face);
+            ASSERT_NE(it, sorround_faces.end());
+        }
+    }
+    {
+        auto [vertices, polygons] = get_square_pyramid_2();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        // get half edge from (0, 0, 0) -> (0.5, 0.5, 1)
+        Point3D point1{ 0, 0, 0 };
+        Point3D point2{ 0.5f, 0.5f, 1 };
+        std::shared_ptr<HalfEdge<Point3D>> desired_half_edge;
+        for (auto half_edge : mesh->half_edges)
+        {
+            if (half_edge->prev->vertex->position == point1 && half_edge->vertex->position == point2)
+            {
+                desired_half_edge = half_edge;
+                break;
+            }
+        }
+        auto sorround_faces = mesh->get_sorround_faces(desired_half_edge);
+        std::unordered_set<Point3D, Point3DHashFunction> undesired_face{
+            {1, 0, 0},
+            {0, 1, 0},
+            {1, 1, 0}
+        };
+        std::vector<std::unordered_set<Point3D, Point3DHashFunction>> desired_faces{
+            {vertices[polygons[0][0]], vertices[polygons[0][1]], vertices[polygons[0][2]]},
+            {vertices[polygons[2][0]], vertices[polygons[2][1]], vertices[polygons[2][2]]},
+            {vertices[polygons[3][0]], vertices[polygons[3][1]], vertices[polygons[3][2]]},
+            {vertices[polygons[4][0]], vertices[polygons[4][1]], vertices[polygons[4][2]]},
+            {vertices[polygons[5][0]], vertices[polygons[5][1]], vertices[polygons[5][2]]},
+        };
+        std::vector<std::unordered_set<Point3D, Point3DHashFunction>> faces;
+        for (auto sorround_face : sorround_faces)
+        {
+            auto edge_iter = sorround_face->half_edge;
+            auto edge_head = edge_iter;
+            std::unordered_set<Point3D, Point3DHashFunction> face;
+            do
+            {
+                face.emplace(edge_iter->vertex->position);
+                edge_iter = edge_iter->next;
+            } while (edge_iter != edge_head);
+            faces.emplace_back(face);
+        }
+        ASSERT_EQ(faces.size(), 5);
+        auto it = std::find(faces.begin(), faces.end(), undesired_face);
+        ASSERT_EQ(it, faces.end());
+        for (auto desired_face : desired_faces)
+        {
+            auto it = std::find(faces.begin(), faces.end(), desired_face);
+            ASSERT_NE(it, faces.end());
+        }
     }
 }
 

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <cmath>
 #include "simple_math.h"
 
 namespace charles_mesh
@@ -33,6 +34,34 @@ public:
         result.x = this->x - point.x;
         result.y = this->y - point.y;
         result.z = this->z - point.z;
+        return result;
+    }
+    Point3D operator+(const Point3D& point) const
+    {
+        Point3D result;
+        result.x = this->x + point.x;
+        result.y = this->y + point.y;
+        result.z = this->z + point.z;
+        return result;
+    }
+    Point3D operator*(double value) const
+    {
+        Point3D result;
+        result.x = this->x * value;
+        result.y = this->y * value;
+        result.z = this->z * value;
+        return result;
+    }
+    Point3D operator/(double value) const
+    {
+        if(value == 0.0f)
+        {
+            throw std::exception("value cannot be zero!");
+        }
+        Point3D result;
+        result.x = this->x / value;
+        result.y = this->y / value;
+        result.z = this-> z / value;
         return result;
     }
     double& operator[](int index)
@@ -83,6 +112,29 @@ public:
             return false;
         }
         return true;
+    }
+    double len() const
+    {
+        return std::pow(std::pow(this->x, 2) + std::pow(this->y, 2) + std::pow(this->z, 2), 0.5f);
+    }
+    void normalize()
+    {
+        auto length = this->len();
+        this->x = this->x / length;
+        this->y = this->y / length;
+        this->z = this->z / length;
+    }
+};
+
+class Point3DHashFunction
+{
+public:
+    size_t operator()(const Point3D& point) const
+    {
+        size_t x_hash = std::hash<double>()(point.x);
+        size_t y_hash = std::hash<double>()(point.y) << 1;
+        size_t z_hash = std::hash<double>()(point.z) << 2;
+        return x_hash ^ y_hash ^ z_hash;
     }
 };
 

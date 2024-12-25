@@ -14,6 +14,7 @@ pkg_check_modules(gmp REQUIRED IMPORTED_TARGET gmp)
 find_package(SymEngine CONFIG REQUIRED)
 find_package(hello_symengine)
 find_package(Boost COMPONENTS functional REQUIRED)
+find_package(triangles_shower)
 
 # target_link_libraries(hello_world symengine)
 
@@ -27,9 +28,11 @@ add_executable(
     mesh_type_test.cpp
     unit_test.cpp
     charles_mesh_test.cpp
-    charles_cgal_test.cpp)
+    charles_cgal_test.cpp
+    draw_mesh_test.cpp
+)
 find_package(GTest CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
+target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional triangles_shower::triangles_shower)
 
 
 # this is for export libary for external use
