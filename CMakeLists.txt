@@ -25,6 +25,7 @@ add_executable(
     charles_bvh.cpp
     simple_math.cpp
     quadric_error_metrics.cpp
+    basic_type.cpp
     mesh_type_test.cpp
     unit_test.cpp
     charles_mesh_test.cpp

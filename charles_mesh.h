@@ -16,6 +16,7 @@
 #include "basic_type.h"
 #include "quadric_error_metrics.h"
 #include "charles_sort.h"
+#include "triangles_shower.h"
 
 namespace charles_mesh
 {
@@ -175,6 +176,7 @@ public:
     std::vector<std::shared_ptr<Vertex<VData>>>   vertices;
     std::vector<std::shared_ptr<HalfEdge<VData>>> half_edges;
     std::vector<std::shared_ptr<Face<VData>>>     faces;
+    bool debug_viewer = false;
 public:
     std::shared_ptr<Vertex<VData>>   v_head;
     std::shared_ptr<HalfEdge<VData>> e_head;
@@ -205,6 +207,28 @@ public:
     > copy_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
     std::unordered_set<std::shared_ptr<Face<VData>>> get_sorround_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
 };
+
+template <typename VData>
+std::vector<std::shared_ptr<Vertex<VData>>> get_vertices(std::vector<std::shared_ptr<Face<VData>>>& polygons)
+{
+    std::unordered_set<std::shared_ptr<Vertex<VData>>> vertices;
+    std::vector<std::shared_ptr<Vertex<VData>>> ret;
+    for (auto& polygon : polygons)
+    {
+        auto he_header = polygon->half_edge;
+        auto he_iter = he_header;
+        do
+        {
+            vertices.emplace(he_iter->vertex);
+            he_iter = he_iter->next;
+        } while (he_iter != he_header);
+    }
+    for (auto& vertex : vertices)
+    {
+        ret.emplace_back(vertex);
+    }
+    return ret;
+}
 
 
 template<typename VData>
@@ -394,13 +418,13 @@ bool Face<VData>::intersect(const VData& point1, const VData& point2, VData& int
     intersect_p.z = z0 + t * (z1 - z0);
 
     // check if intersect_p between point1 and point2
-
     if(!intersect_p.between(point1, point2))
     {
         return false;
     }
 
     // should alse check if point inside polygon
+    // TODO: deviation problem, if point is very close to boundary(very very close, should not let inside)
     if(!this->point_inside(intersect_p))
     {
         return false;
@@ -932,13 +956,14 @@ void Mesh<VData>::edge_collapse()
     std::sort(sorted_half_edges.begin(), sorted_half_edges.end(), EdgeMetricsComparator<VData>());
     std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_edges;
     std::cout << "after sort" << std::endl;
-    for (int i = 0; i < this->half_edges.size(); i++)
+    for (int i = 0; i < this->half_edges.size() / 2; i++)
     {
         // check if collapsed edge will result to mesh intersection
-        if (i == 31)
-        {
-            std::cout << "catch point" << std::endl;
-        }
+        //if (i == 16)
+        //{
+        //    std::cout << "catch point" << std::endl;
+        //    this->debug_viewer = true;
+        //}
         //printProgress(double(i) / double(half_edges.size() - 1));
         std::cout << i << "/" << half_edges.size() - 1 << std::endl;
         // get half edge of max metrics
@@ -1047,7 +1072,7 @@ void Mesh<VData>::edge_collapse()
                 half_edge_to_delete->prev = nullptr;
                 half_edge_to_delete->opposite = nullptr;
                 half_edge_to_delete->vertex = nullptr;
-                half_edge_to_delete->update_quadric_error_metrics();
+                half_edge_to_delete->update_quadric_error_metrics(std::numeric_limits<double>::max());
                 sort_sorted_vec_with_one_changed(sorted_half_edges, half_edge_to_delete, EdgeMetricsComparator<VData>());
             }
             // then delete face
@@ -1271,6 +1296,58 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
 
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f1), new_faces.end());
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f2), new_faces.end());
+    // if debug viewer is on
+    if (this->debug_viewer)
+    {
+        std::vector<DisplayInfo<VData, std::vector<int>>> mul_display_info;
+        auto get_display_info = [](std::vector<std::shared_ptr<Vertex<VData>>>& vertices, std::vector<std::shared_ptr<Face<VData>>>& polygons, float r, float g, float b) -> DisplayInfo<VData, std::vector<int>> {
+            DisplayInfo<Point3D, std::vector<int>> display_info;
+            std::unordered_map<std::shared_ptr<Vertex<VData>>, int> index_cache;
+            int count = 0;
+            for (const auto& vertex : vertices)
+            {
+                // file << "v " << vertex->position.x << " " << vertex->position.y << " " << vertex->position.z << std::endl;
+                display_info.vertices.emplace_back(vertex->position);
+                index_cache.emplace(vertex, count);
+                count++;
+            }
+
+            for (const auto& face : polygons)
+            {
+                auto iter = face->half_edge;
+                auto head = iter;
+                std::vector<int> vec_face;
+                do
+                {
+                    int index = index_cache.at(iter->vertex);
+                    vec_face.emplace_back(index);
+                    iter = iter->next;
+                } while (iter != head);
+                display_info.triangles.emplace_back(vec_face);
+                display_info.normals.emplace_back(face->normal());
+            }
+            display_info.r = r;
+            display_info.g = g;
+            display_info.b = b;
+            return display_info;
+        };
+        std::vector<std::shared_ptr<Face<VData>>> purified_mesh_faces;
+        for (auto& face : this->faces)
+        {
+            if (!excluded_faces.contains(face))
+            {
+                purified_mesh_faces.emplace_back(face);
+            }
+        }
+        auto mesh_display_info = get_display_info(this->vertices, purified_mesh_faces, 0, 1.0f, 0);
+
+        auto collapsed_vertices = get_vertices(new_faces);
+        auto collapsed_display_info = get_display_info(collapsed_vertices, new_faces, 1.0f, 0, 0);
+
+        mul_display_info.emplace_back(mesh_display_info);
+        mul_display_info.emplace_back(collapsed_display_info);
+        show_triangles_with_model_viewer(mul_display_info);
+    }
     // check if mesh has intersection with collapsed edge
     if (this->intersect(new_faces, excluded_faces))
     {

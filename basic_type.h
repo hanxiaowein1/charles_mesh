@@ -8,6 +8,9 @@
 
 namespace charles_mesh
 {
+
+extern double deviation;
+
 class Point3D
 {
 public:
@@ -83,15 +86,15 @@ public:
     }
     bool between(const Point3D& point1, const Point3D& point2)
     {
-        if(!(charles_math::in_interval(this->x, point1.x, point2.x)))
+        if(!(charles_math::in_interval(this->x + deviation, point1.x, point2.x) && charles_math::in_interval(this->x - deviation, point1.x, point2.x)))
         {
             return false;
         }
-        if(!(charles_math::in_interval(this->y, point1.y, point2.y)))
+        if(!(charles_math::in_interval(this->y + deviation, point1.y, point2.y) && charles_math::in_interval(this->y - deviation, point1.y, point2.y)))
         {
             return false;
         }
-        if(!(charles_math::in_interval(this->z, point1.z, point2.z)))
+        if(!(charles_math::in_interval(this->z + deviation, point1.z, point2.z) && charles_math::in_interval(this->z - deviation, point1.z, point2.z)))
         {
             return false;
         }
