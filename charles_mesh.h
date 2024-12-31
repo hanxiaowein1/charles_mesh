@@ -39,6 +39,7 @@ public:
     std::tuple<std::unordered_set<std::shared_ptr<Vertex<VData>>>, std::unordered_set<std::shared_ptr<Vertex<VData>>>> get_connected_vertices();
     // NOTE: only can be used in triangle mesh
     std::unordered_set<std::shared_ptr<HalfEdge<VData>>> get_opposite_half_edges();
+    std::unordered_set<std::pair<VData, VData>> get_opposite_connected_vertices();
     void reset();
 };
 
@@ -86,6 +87,20 @@ std::unordered_set<std::shared_ptr<HalfEdge<VData>>> Vertex<VData>::get_opposite
     return opposite_half_edges;
 }
 
+template <typename VData>
+std::unordered_set<std::pair<VData, VData>> Vertex<VData>::get_opposite_connected_vertices()
+{
+    std::unordered_set<std::pair<VData, VData>> opposite_connected_vertices;
+    auto lambda = [&](std::shared_ptr<HalfEdge<VData>> in_edge) -> bool {
+        auto start_pos = in_edge->next->vertex->position;
+        auto end_pos = in_edge->prev->vertex->position;
+        opposite_connected_vertices.emplace(std::make_pair(start_pos, end_pos));
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> func = lambda;
+    this->handle_in_edge(func);
+    return opposite_connected_vertices;
+}
 
 template <typename VData = Point3D>
 class Face : public Object<VData>
@@ -195,10 +210,11 @@ public:
     // can save non manifold mesh
     void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
     // surface simplification using quadric error metrics
-    void edge_collapse();
+    void edge_collapse(int collapse_times = 10);
     void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
     bool edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge);
     bool is_manifold();
+    bool is_manifold(std::shared_ptr<HalfEdge<VData>> half_edge, std::vector<std::shared_ptr<Face<VData>>> faces);
     std::tuple<
         std::vector<std::shared_ptr<Face<VData>>>,
         std::vector<std::shared_ptr<HalfEdge<VData>>>,
@@ -206,6 +222,7 @@ public:
         std::shared_ptr<HalfEdge<VData>>
     > copy_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
     std::unordered_set<std::shared_ptr<Face<VData>>> get_sorround_faces(std::shared_ptr<HalfEdge<VData>> half_edge);
+    std::unordered_set<std::pair<VData, VData>> get_boundary_connected_vertices(std::shared_ptr<HalfEdge<VData>> half_edge);
 };
 
 template <typename VData>
@@ -948,7 +965,7 @@ void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_
  * @tparam VData 
  */
 template <typename VData>
-void Mesh<VData>::edge_collapse()
+void Mesh<VData>::edge_collapse(int collapse_times)
 {
     // calculate all metrics of half edge
     std::vector<std::shared_ptr<HalfEdge<VData>>> sorted_half_edges;
@@ -956,7 +973,7 @@ void Mesh<VData>::edge_collapse()
     std::sort(sorted_half_edges.begin(), sorted_half_edges.end(), EdgeMetricsComparator<VData>());
     std::unordered_set<std::shared_ptr<HalfEdge<VData>>> visited_edges;
     std::cout << "after sort" << std::endl;
-    for (int i = 0; i < this->half_edges.size() / 2; i++)
+    for (int i = 0; i < collapse_times; i++)
     {
         // check if collapsed edge will result to mesh intersection
         //if (i == 16)
@@ -965,21 +982,27 @@ void Mesh<VData>::edge_collapse()
         //    this->debug_viewer = true;
         //}
         //printProgress(double(i) / double(half_edges.size() - 1));
-        std::cout << i << "/" << half_edges.size() - 1 << std::endl;
+        std::cout << i << "/" << collapse_times - 1 << std::endl;
         // get half edge of max metrics
         std::shared_ptr<HalfEdge<VData>> half_edge;
         for (int j = 0; j < this->half_edges.size(); j++)
         {
-            half_edge = sorted_half_edges[j];
-            //auto [position, metrics] = half_edge->quadric_error_metrics();
-            //if (metrics == std::numeric_limits<double>::max())
-            //{
-            //    return;
-            //}
-            if (!this->edge_collapse_intersection_detect(half_edge))
+            auto temp_half_edge = sorted_half_edges[j];
+            auto [position, metrics] = temp_half_edge->quadric_error_metrics();
+            if (metrics == std::numeric_limits<double>::max())
             {
                 break;
             }
+            if (!this->edge_collapse_intersection_detect(temp_half_edge))
+            {
+                half_edge = temp_half_edge;
+                break;
+            }
+        }
+        if (!half_edge)
+        {
+            std::cout << "all half edge collapse will result in non manifold or self intersection" << std::endl;
+            break;
         }
         //auto half_edge = sorted_half_edges[0];
         auto e1 = half_edge->prev;
@@ -1353,7 +1376,63 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     {
         return true;
     }
+
+    if (this->is_manifold(half_edge, new_faces))
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+
     return false;
+}
+
+/**
+ * @brief check if mesh is manifold if those faces that sourround half_edge replaced by faces
+ * 
+ * @tparam VData 
+ * @param half_edge 
+ * @param faces 
+ * @return true 
+ * @return false 
+ */
+template <typename VData>
+bool Mesh<VData>::is_manifold(std::shared_ptr<HalfEdge<VData>> half_edge, std::vector<std::shared_ptr<Face<VData>>> faces)
+{
+    auto boundary_connected_vertice = this->get_boundary_connected_vertices(half_edge);
+    std::unordered_set<std::pair<VData, VData>> new_face_connected_vertice;
+    for (auto& new_face : faces)
+    {
+        auto he_iter = new_face->half_edge;
+        auto he_head = he_iter;
+        do
+        {
+            std::pair<VData, VData> search_item;
+            search_item.first = he_iter->prev->vertex->position;
+            search_item.second = he_iter->vertex->position;
+            if (he_iter->opposite == nullptr)
+            {
+                if (!boundary_connected_vertice.contains(search_item))
+                {
+                    // cannot found opposite edge in src mesh, so it's not manifold
+                    return false;
+                }
+            }
+            new_face_connected_vertice.emplace(search_item);
+            he_iter = he_iter->next;
+        } while (he_iter != he_head);
+    }
+    for (auto& boundary_connected_vertex : boundary_connected_vertice)
+    {
+        if (!new_face_connected_vertice.contains(boundary_connected_vertex))
+        {
+            // cannot find opposite edge in new face, src mesh will exist one side edge, so it's not manifold
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -1397,6 +1476,37 @@ bool Mesh<VData>::is_manifold()
         }
     }
     return true;
+}
+
+template <typename VData>
+std::unordered_set<std::pair<VData, VData>> Mesh<VData>::get_boundary_connected_vertices(std::shared_ptr<HalfEdge<VData>> half_edge)
+{
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> avoided_edges;
+    auto get_avoided_edges_lambda = [&](std::shared_ptr<HalfEdge<VData>> in_edge) ->bool {
+        avoided_edges.emplace(in_edge);
+        avoided_edges.emplace(in_edge->opposite);
+        return true;
+    };
+    std::function<bool(std::shared_ptr<HalfEdge<VData>>)> get_avoided_edges_func = get_avoided_edges_lambda;
+    half_edge->prev->vertex->handle_in_edge(get_avoided_edges_func);
+    half_edge->vertex->handle_in_edge(get_avoided_edges_func);
+
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> opposite_half_edges1 = half_edge->vertex->get_opposite_half_edges();
+    std::unordered_set<std::shared_ptr<HalfEdge<VData>>> opposite_half_edges2 = half_edge->prev->vertex->get_opposite_half_edges();
+
+    opposite_half_edges1.merge(opposite_half_edges2);
+
+    std::unordered_set<std::pair<VData, VData>> opposite_connected_vertices;
+    for(const auto& elem: opposite_half_edges1)
+    {
+        if(!avoided_edges.contains(elem))
+        {
+            VData start_pos = elem->prev->vertex->position;
+            VData end_pos = elem->vertex->position;
+            opposite_connected_vertices.emplace(std::make_pair(start_pos, end_pos));
+        }
+    }
+    return opposite_connected_vertices;
 }
 
 template <typename VData>

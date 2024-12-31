@@ -386,7 +386,7 @@ TEST(GlobalTest, edge_collapse_small_bunny)
     auto mesh = obj_mesh_io.load_mesh(small_bunny);
     //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
     //mesh->edge_collapse();
-    mesh->edge_collapse();
+    mesh->edge_collapse(50);
     mesh->save_obj("./", "collapse_small_bunny");
 }
 
@@ -643,6 +643,138 @@ TEST(GlobalTest, mesh_get_sorround_faces)
             auto it = std::find(faces.begin(), faces.end(), desired_face);
             ASSERT_NE(it, faces.end());
         }
+    }
+}
+
+TEST(GlobalTest, vertex_get_opposite_connected_vertices)
+{
+    auto [vertices, polygons] = get_square_pyramid_2();
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+    std::shared_ptr<Vertex<Point3D>> desired_vertex;
+    Point3D desired_pos{0.5f, 0.5f, 1};
+    std::unordered_set<std::pair<Point3D, Point3D>> desired_opposite_connected_vertices{
+        {vertices[0], vertices[1]},
+        {vertices[1], vertices[3]},
+        {vertices[3], vertices[2]},
+        {vertices[2], vertices[0]},
+    };
+    for(auto& vertex: mesh->vertices)
+    {
+        if(vertex->position == desired_pos)
+        {
+            desired_vertex = vertex;
+            break;
+        }
+    }
+    auto opposite_connected_vertices = desired_vertex->get_opposite_connected_vertices();
+    for(auto& desired_opposite_connected_vertex: desired_opposite_connected_vertices)
+    {
+        ASSERT_TRUE(opposite_connected_vertices.contains(desired_opposite_connected_vertex));
+    }
+}
+
+TEST(GlobalTest, mesh_get_boundary_connected_vertices)
+{
+    auto [vertices, polygons] = get_square_pyramid_2();
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+    std::shared_ptr<HalfEdge<Point3D>> desired_he;
+    for (auto& he : mesh->half_edges)
+    {
+        if (he->prev->vertex->position == vertices[4])
+        {
+            if (he->vertex->position == vertices[3])
+            {
+                desired_he = he;
+                break;
+            }
+        }
+    }
+    auto boundary_connected_vertices = mesh->get_boundary_connected_vertices(desired_he);
+
+    std::unordered_set<std::pair<Point3D, Point3D>> desired_boundary_connected_vertices{
+        {vertices[2], vertices[0]},
+        {vertices[0], vertices[1]},
+        {vertices[1], vertices[2]},
+    };
+    for (auto& elem : boundary_connected_vertices)
+    {
+        ASSERT_TRUE(desired_boundary_connected_vertices.contains(elem));
+    }
+    for (auto& elem : desired_boundary_connected_vertices)
+    {
+        ASSERT_TRUE(boundary_connected_vertices.contains(elem));
+    }
+}
+
+TEST(GlobalTest, is_manifold_after_collapse)
+{
+    // is manifold after collapse
+    {
+        auto [vertices, polygons] = get_square_pyramid_2();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        std::shared_ptr<HalfEdge<Point3D>> desired_he;
+        for (auto& he : mesh->half_edges)
+        {
+            if (he->prev->vertex->position == vertices[4])
+            {
+                if (he->vertex->position == vertices[3])
+                {
+                    desired_he = he;
+                    break;
+                }
+            }
+        }
+
+        std::vector<Point3D> vertices2{
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            {0.7f, 0.7f, 0.6f}
+        };
+        std::vector<std::vector<int>> polygons2{
+            {0, 1, 3},
+            {1, 2, 3},
+            {0, 3, 2},
+        };
+        std::shared_ptr<Mesh<Point3D>> mesh2(new Mesh<Point3D>(vertices2, polygons2));
+        auto new_faces = mesh2->faces;
+
+        ASSERT_EQ(true, mesh->is_manifold(desired_he, new_faces));
+    }
+
+    // test is not manifold after collapse
+    {
+        auto [vertices, polygons] = get_square_pyramid();
+        std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertices, polygons));
+        std::shared_ptr<HalfEdge<Point3D>> desired_he;
+        for (auto& he : mesh->half_edges)
+        {
+            if (he->prev->vertex->position == vertices[4])
+            {
+                if (he->vertex->position == vertices[3])
+                {
+                    desired_he = he;
+                    break;
+                }
+            }
+        }
+
+        std::vector<Point3D> vertices2{
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            {0.7f, 0.7f, 0.6f}
+        };
+        std::vector<std::vector<int>> polygons2{
+            {0, 1, 3},
+            {0, 3, 2},
+        };
+
+        std::shared_ptr<Mesh<Point3D>> mesh2(new Mesh<Point3D>(vertices2, polygons2));
+        auto new_faces = mesh2->faces;
+
+        ASSERT_EQ(false, mesh->is_manifold(desired_he, new_faces));
+
     }
 }
 

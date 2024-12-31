@@ -169,4 +169,22 @@ public:
 
 };
 
+namespace std {
+    template<>
+    struct hash<charles_mesh::Point3D> {
+        size_t operator()(const charles_mesh::Point3D& point) const {
+            size_t x_hash = std::hash<double>()(point.x);
+            size_t y_hash = std::hash<double>()(point.y) << 1;
+            size_t z_hash = std::hash<double>()(point.z) << 2;
+            return x_hash ^ y_hash ^ z_hash;
+        }
+    };
+    template <> 
+    struct hash<std::pair<charles_mesh::Point3D, charles_mesh::Point3D>> {
+        inline size_t operator()(const std::pair<charles_mesh::Point3D, charles_mesh::Point3D>& v) const {
+            std::hash<charles_mesh::Point3D> point_hasher;
+            return point_hasher(v.first) ^ point_hasher(v.second);
+        }
+    };
+}
 #endif
