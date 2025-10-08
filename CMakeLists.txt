@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.20.0)
 set(CMAKE_CXX_STANDARD 20)
 set(LIBIGL_WITH_CGAL ON)
 set(CMAKE_TOOLCHAIN_FILE "D:\\Library\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake")
-set(CMAKE_PREFIX_PATH "D:\\OwnLibrary" ${CMAKE_PREFIX_PATH})
+# set(CMAKE_PREFIX_PATH "D:\\OwnLibrary" ${CMAKE_PREFIX_PATH})
+list(APPEND CMAKE_PREFIX_PATH "D:/OwnLibrary")
 
 project(charles_mesh)
 
@@ -35,6 +36,21 @@ add_executable(
 find_package(GTest CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional triangles_shower::triangles_shower)
 
+add_executable(
+    mesh_viewer
+    mesh_factory.cpp
+    charles_mesh.cpp
+    charles_bvh.cpp
+    simple_math.cpp
+    quadric_error_metrics.cpp
+    basic_type.cpp
+    viewer_middle_layer.cpp
+)
+
+find_package(hello_qt)
+
+target_link_libraries(mesh_viewer triangles_shower::triangles_shower hello_qt::hello_qt GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
+
 
 # this is for export libary for external use
 set(CMAKE_INSTALL_PREFIX "D:/OwnLibrary")
@@ -46,6 +62,7 @@ add_library(
     charles_bvh.cpp
     simple_math.cpp
     quadric_error_metrics.cpp
+    basic_type.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
@@ -97,3 +114,4 @@ install(FILES "${PROJECT_SOURCE_DIR}/mesh_factory.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/basic_type.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/simple_math.h" DESTINATION include)
 install(FILES "${PROJECT_SOURCE_DIR}/charles_cgal.h" DESTINATION include)
+install(FILES "${PROJECT_SOURCE_DIR}/quadric_error_metrics.h" DESTINATION include)
