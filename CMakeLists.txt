@@ -50,7 +50,8 @@ add_executable(
 find_package(hello_qt)
 
 target_link_libraries(mesh_viewer triangles_shower::triangles_shower hello_qt::hello_qt GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
-
+# Deploy LibraryA's config files to executable directory
+triangles_shower_deploy_config_files(mesh_viewer)
 
 # this is for export libary for external use
 set(CMAKE_INSTALL_PREFIX "D:/OwnLibrary")
