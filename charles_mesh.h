@@ -209,6 +209,7 @@ public:
     bool intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons, std::unordered_set<std::shared_ptr<Face<VData>>> exclude_polygons = std::unordered_set<std::shared_ptr<Face<VData>>>());
     // can save non manifold mesh
     void save_obj(const std::string& mesh_dir, const std::string& mesh_name);
+    void save_obj(const std::string& mesh_path);
     // surface simplification using quadric error metrics
     void edge_collapse(int collapse_times = 10);
     void edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge);
@@ -922,10 +923,8 @@ bool Mesh<VData>::intersect(std::vector<std::shared_ptr<Face<VData>>>& polygons,
 }
 
 template<typename VData>
-void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_name)
+void Mesh<VData>::save_obj(const std::string& mesh_path)
 {
-    // just use member vertices and faces to save
-    std::string mesh_path = std::format("{}{}.obj", mesh_dir, mesh_name);
     std::ofstream file(mesh_path);
     if (!file.is_open()) {
         std::cerr << "Error opening file for writing: " << mesh_path << std::endl;
@@ -957,6 +956,14 @@ void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_
     }
 
     file.close();
+}
+
+template<typename VData>
+void Mesh<VData>::save_obj(const std::string& mesh_dir, const std::string& mesh_name)
+{
+    // just use member vertices and faces to save
+    std::string mesh_path = std::format("{}{}.obj", mesh_dir, mesh_name);
+    this->save_obj(mesh_path);
 }
 
 /**

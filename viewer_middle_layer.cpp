@@ -6,10 +6,8 @@
 namespace charles_mesh
 {
 
-void mesh_viewer(std::string mesh_file)
+void mesh_viewer(std::shared_ptr<Mesh<Point3D>> mesh)
 {
-    ObjMeshIO obj_mesh_io;
-    auto mesh = obj_mesh_io.load_mesh(mesh_file);
     DisplayInfo<Point3D, std::vector<int>> display_info;
     std::unordered_map<decltype(mesh->v_head), int> index_cache;
     int count = 0;
@@ -43,16 +41,12 @@ void mesh_viewer(std::string mesh_file)
     show_triangles_with_model_viewer(mul_display_info);
 }
 
+void mesh_viewer(std::string mesh_file)
+{
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(mesh_file);
+    mesh_viewer(mesh);
 }
 
-int main()
-{
-    // choose mesh to view
-    choose_file_to_process(std::function<void(std::string)>(
-        [](std::string mesh_path)
-        {
-            charles_mesh::mesh_viewer(mesh_path);
-        }
-    ));
-    return 0;
 }
+
