@@ -1,13 +1,9 @@
 #include "mesh_factory.h"
 #include "charles_mesh.h"
 #include "unit_test.h"
-#include <cstdlib>
 #include <boost/functional/hash.hpp>
 #include <unordered_set>
 #include <unordered_map>
-
-#define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
-#define PBWIDTH 60
 
 std::pair<std::vector<charles_mesh::Point3D>, std::vector<std::vector<int>>> get_tetrahedron()
 {
@@ -386,7 +382,7 @@ TEST(GlobalTest, edge_collapse_small_bunny)
     auto mesh = obj_mesh_io.load_mesh(small_bunny);
     //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
     //mesh->edge_collapse();
-    mesh->edge_collapse(50);
+    mesh->edge_collapse(10);
     mesh->save_obj("./", "collapse_small_bunny");
 }
 
@@ -468,6 +464,16 @@ TEST(GlobalTest, mesh_duplicate_face_detect)
     }
 }
 
+TEST(GlobalTest, choose_mesh_and_check_its_manifold)
+{
+    {
+        std::string small_bunny = "D:\\PHD\\proto_bunny20.obj";
+        ObjMeshIO obj_mesh_io;
+        auto mesh = obj_mesh_io.load_mesh(small_bunny);
+        ASSERT_EQ(true, mesh->is_manifold());
+    }
+}
+
 TEST(GlobalTest, mesh_is_manifold)
 {
     // test is manifold
@@ -500,6 +506,21 @@ TEST(GlobalTest, mesh_is_manifold)
         auto mesh = obj_mesh_io.load_mesh(small_bunny);
         ASSERT_EQ(true, mesh->is_manifold());
     }
+}
+
+TEST(GlobalTest, mesh_duplicate_face_is_not_manifold)
+{
+    std::vector<charles_mesh::Point3D> vertice = {
+        {0, 0, 0},
+        {1, 0, 0},
+        {0, 1, 0},
+    };
+    std::vector<std::vector<int>> polygons = {
+        {0, 1, 2},
+        {0, 2, 1},
+    };
+    auto mesh = std::make_shared<Mesh<Point3D>>(vertice, polygons);
+    ASSERT_EQ(false, mesh->is_manifold());
 }
 
 TEST(GlobalTest, mesh_copy_faces)
@@ -778,12 +799,25 @@ TEST(GlobalTest, is_manifold_after_collapse)
     }
 }
 
-void printProgress(double percentage) {
-    int val = (int)(percentage * 100);
-    int lpad = (int)(percentage * PBWIDTH);
-    int rpad = PBWIDTH - lpad;
-    printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
-    fflush(stdout);
+TEST(GlobalTest, quadric_error_metrics)
+{
+    auto [vertice, polygons] = get_square_pyramid_2();
+    std::shared_ptr<Mesh<Point3D>> mesh(new Mesh<Point3D>(vertice, polygons));
+    // get v3->v4
+    std::shared_ptr<HalfEdge<Point3D>> e3_4;
+    for(const auto& half_edge: mesh->half_edges)
+    {
+        if(half_edge->vertex->position == vertice[3] && half_edge->next->vertex->position == vertice[4])
+        {
+            e3_4 = half_edge;
+            break;
+        }
+    }
+    // calculate its quadric error metric
+    auto [point, metrics] = e3_4->quadric_error_metrics();
+    std::cout << "for breakpoint" << std::endl;
 }
+
+
 
 };

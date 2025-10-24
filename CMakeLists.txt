@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 set(CMAKE_CXX_STANDARD 20)
-set(LIBIGL_WITH_CGAL ON)
 set(CMAKE_TOOLCHAIN_FILE "D:\\Library\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake")
 # set(CMAKE_PREFIX_PATH "D:\\OwnLibrary" ${CMAKE_PREFIX_PATH})
 list(APPEND CMAKE_PREFIX_PATH "D:/OwnLibrary")
@@ -9,7 +8,7 @@ list(APPEND CMAKE_PREFIX_PATH "D:/OwnLibrary")
 option(BUILD_MESH_VIEWER "enable building mesh viewer" OFF)
 option(BUILD_MESH_PROCESSING_VISUALIZATION_TOOL "enable building mesh processing visualization tool" ON)
 option(BUILD_CHARLES_MESH_LIB "enable building charles mesh library" OFF)
-option(BUILD_UNIT_TEST "enable building unit test" OFF)
+option(BUILD_UNIT_TEST "enable building unit test" ON)
 
 project(charles_mesh)
 
@@ -39,8 +38,10 @@ if(BUILD_UNIT_TEST)
         charles_mesh_test.cpp
         charles_cgal_test.cpp
         draw_mesh_test.cpp
+        print_tools.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional triangles_shower::triangles_shower)
+    SET_TARGET_PROPERTIES(${PROJECT_NAME}_test PROPERTIES LINK_FLAGS "/PROFILE")
 endif()
 
 
@@ -62,6 +63,7 @@ if(BUILD_MESH_VIEWER)
         basic_type.cpp
         viewer_middle_layer.cpp
         mesh_viewer_starter.cpp
+        print_tools.cpp
     )
     target_link_libraries(mesh_viewer triangles_shower::triangles_shower hello_qt::hello_qt GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
     # Deploy triangle_shower's config files to executable directory
@@ -79,6 +81,7 @@ if(BUILD_MESH_PROCESSING_VISUALIZATION_TOOL)
     find_package(Boost COMPONENTS functional REQUIRED)
     find_package(triangles_shower)
     find_package(Qt5 REQUIRED COMPONENTS Widgets)
+    find_package(marching_cubes_33)
     add_executable(
         mesh_processing_tool
         mesh_processing_visualization_tool.cpp
@@ -90,8 +93,9 @@ if(BUILD_MESH_PROCESSING_VISUALIZATION_TOOL)
         quadric_error_metrics.cpp
         basic_type.cpp
         viewer_middle_layer.cpp
+        print_tools.cpp
     )
-    target_link_libraries(mesh_processing_tool Qt5::Widgets triangles_shower::triangles_shower GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)
+    target_link_libraries(mesh_processing_tool Qt5::Widgets triangles_shower::triangles_shower GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional marching_cubes_33::marching_cubes_33)
     # Deploy triangle_shower's config files to executable directory
     triangles_shower_deploy_config_files(mesh_processing_tool)
 endif()
@@ -115,6 +119,7 @@ if(BUILD_CHARLES_MESH_LIB)
         simple_math.cpp
         quadric_error_metrics.cpp
         basic_type.cpp
+        print_tools.cpp
     )
 
     target_link_libraries(${PROJECT_NAME} GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional)

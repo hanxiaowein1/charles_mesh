@@ -15,5 +15,13 @@ TEST(GlobalTest, bunny_read_write_test)
     obj_mesh_io.save_mesh("./", "bunny.obj", mesh);
 }
 
+TEST(GlobalTest, mc33_bunny_test)
+{
+    std::string bunny_obj_src_path = "D:\\PHD\\Projects\\hello_cg\\hello_mc33\\normal_implement\\build\\problematic_bunny.obj";
+    ObjMeshIO obj_mesh_io;
+    auto mesh = obj_mesh_io.load_mesh(bunny_obj_src_path);
+    obj_mesh_io.save_mesh("./", "mc33_bunny.obj", mesh);
+}
+
 };
 

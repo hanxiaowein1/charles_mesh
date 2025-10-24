@@ -17,11 +17,21 @@
 #include "quadric_error_metrics.h"
 #include "charles_sort.h"
 #include "triangles_shower.h"
+#include "print_tools.h"
+
+template<typename DataType>
+void erase_from_vector(std::vector<DataType>& vec, std::unordered_set<DataType>& elems)
+{
+    auto new_end = std::remove_if(vec.begin(), vec.end(), 
+        [&elems](DataType value) {
+            return elems.find(value) != elems.end();
+        });
+    vec.erase(new_end, vec.end());
+}
+
 
 namespace charles_mesh
 {
-
-void printProgress(double percentage);
 
 template <typename VData>
 class HalfEdge;
@@ -602,7 +612,21 @@ std::tuple<VData, double> HalfEdge<VData>::quadric_error_metrics()
 {
     if (!this->quadric_error_metrics_initialized)
     {
-        this->update_quadric_error_metrics();
+        if (this->opposite != nullptr)
+        {
+            if (this->opposite->quadric_error_metrics_initialized)
+            {
+                std::tie(this->m_quadric_error_metrics_point, this->m_quadric_error_metrics) = this->opposite->quadric_error_metrics();
+            }
+            else
+            {
+                this->update_quadric_error_metrics();
+            }
+        }
+        else
+        {
+            this->update_quadric_error_metrics();
+        }
     }
     return { this->m_quadric_error_metrics_point, this->m_quadric_error_metrics };
 }
@@ -646,8 +670,8 @@ std::tuple<VData, double> HalfEdge<VData>::calculate_quadric_error_metrics()
 template <typename VData>
 void HalfEdge<VData>::update_quadric_error_metrics()
 {
-    this->quadric_error_metrics_initialized = true;
     std::tie(this->m_quadric_error_metrics_point, this->m_quadric_error_metrics) = this->calculate_quadric_error_metrics();
+    this->quadric_error_metrics_initialized = true;
 }
 
 template <typename VData>
@@ -982,14 +1006,8 @@ void Mesh<VData>::edge_collapse(int collapse_times)
     std::cout << "after sort" << std::endl;
     for (int i = 0; i < collapse_times; i++)
     {
-        // check if collapsed edge will result to mesh intersection
-        //if (i == 16)
-        //{
-        //    std::cout << "catch point" << std::endl;
-        //    this->debug_viewer = true;
-        //}
-        //printProgress(double(i) / double(half_edges.size() - 1));
-        std::cout << i << "/" << collapse_times - 1 << std::endl;
+        printProgress(double(i) / double(collapse_times - 1));
+        // std::cout << i << "/" << collapse_times - 1 << std::endl;
         // get half edge of max metrics
         std::shared_ptr<HalfEdge<VData>> half_edge;
         for (int j = 0; j < this->half_edges.size(); j++)
@@ -1045,23 +1063,11 @@ void Mesh<VData>::edge_collapse(int collapse_times)
         v2->half_edge = e5_op;
         v4->half_edge = e6_op;
 
-        auto v2_opposite_half_edges = v2->get_opposite_half_edges();
-        std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
-
         // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
         auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
             if (in_edge == e2 || in_edge == e6)
             {
                 return false;
-            }
-            auto v3_opposite_half_edge = in_edge->next->next;
-            if (v2_opposite_half_edges.contains(v3_opposite_half_edge->opposite))
-            {
-                // duplicate detected
-                if (in_edge->face != f1 && in_edge->face != f2)
-                {
-                    duplicate_faces.emplace_back(in_edge->face);
-                }
             }
             in_edge->vertex = vertex_point_to;
             return true;
@@ -1078,67 +1084,41 @@ void Mesh<VData>::edge_collapse(int collapse_times)
         e5_op->opposite = e6_op;
         e6_op->opposite = e5_op;
 
-        for (auto duplicate_face : duplicate_faces)
-        {
-            auto half_edge_head = duplicate_face->half_edge;
-            auto half_edge_iter = half_edge_head;
-            std::vector<std::shared_ptr<HalfEdge<VData>>> half_edges_to_delete;
-            do
-            {
-                // change opposite half edge to nullptr first
-                half_edges_to_delete.emplace_back(half_edge_iter);
-                // if happen this, that means duplicate faces has connection, change one face affect another face, but because it's connected, so the another connected face will definitely delete its opposite
-                if (half_edge_iter->opposite != nullptr)
-                {
-                    half_edge_iter->opposite->opposite = nullptr;
-                }
-                half_edge_iter = half_edge_iter->next;
-            } while (half_edge_iter != half_edge_head);
-            // then delete all the half edge
-            for (auto half_edge_to_delete : half_edges_to_delete)
-            {
-                half_edge_to_delete->face = nullptr;
-                half_edge_to_delete->next = nullptr;
-                half_edge_to_delete->prev = nullptr;
-                half_edge_to_delete->opposite = nullptr;
-                half_edge_to_delete->vertex = nullptr;
-                half_edge_to_delete->update_quadric_error_metrics(std::numeric_limits<double>::max());
-                sort_sorted_vec_with_one_changed(sorted_half_edges, half_edge_to_delete, EdgeMetricsComparator<VData>());
-            }
-            // then delete face
-            duplicate_face->half_edge = nullptr;
-            this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), duplicate_face), this->faces.end());
-        }
+        std::unordered_set<std::shared_ptr<HalfEdge<VData>>> half_edges_to_delete;
+        std::unordered_set<std::shared_ptr<Face<VData>>> faces_to_delete;
+        std::unordered_set<std::shared_ptr<Vertex<VData>>> vertice_to_delete;
 
         // reset all obseleted edge vertex and face shared_ptr to nullptr(to avoid memory cannot be freed because of loop reference)
         e1->reset();
-        e1->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e1, EdgeMetricsComparator<VData>());
         e2->reset();
-        e2->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e2, EdgeMetricsComparator<VData>());
         e3->reset();
-        e3->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e3, EdgeMetricsComparator<VData>());
         e4->reset();
-        e4->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e4, EdgeMetricsComparator<VData>());
         e5->reset();
-        e5->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e5, EdgeMetricsComparator<VData>());
         e6->reset();
-        e6->update_quadric_error_metrics(std::numeric_limits<double>::max());
-        sort_sorted_vec_with_one_changed(sorted_half_edges, e6, EdgeMetricsComparator<VData>());
+        half_edges_to_delete.insert({e1, e2, e3, e4, e5, e6});
 
         v3->reset();
-        this->vertices.erase(std::remove(this->vertices.begin(), this->vertices.end(), v3), this->vertices.end());
+        vertice_to_delete.emplace(v3);
 
         f1->reset();
-        //this->faces.erase(f1);
-        this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), f1), this->faces.end());
+        faces_to_delete.emplace(f1);
         f2->reset();
-        //this->faces.erase(f2);
-        this->faces.erase(std::remove(this->faces.begin(), this->faces.end(), f2), this->faces.end());
+        faces_to_delete.emplace(f2);
+
+        // delete at once
+        {
+            // delete half edges
+            erase_from_vector(this->half_edges, half_edges_to_delete);
+            erase_from_vector(sorted_half_edges, half_edges_to_delete);
+        }
+        {
+            // delete faces
+            erase_from_vector(this->faces, faces_to_delete);
+        }
+        {
+            // delete vertice
+            erase_from_vector(this->vertices, vertice_to_delete);
+        }
 
         // update the properties of face and half edge
         auto lambda_func2 = [&](decltype(v2->half_edge) in_edge) -> bool {
@@ -1157,39 +1137,6 @@ void Mesh<VData>::edge_collapse(int collapse_times)
         std::function<bool(decltype(v2->half_edge))> update_properties_func = lambda_func2;
         v2->handle_in_edge(update_properties_func);
 
-        // self error detection
-        std::vector<std::shared_ptr<HalfEdge<VData>>> for_detected_edges{e1_op, e5_op, e6_op, e3_op};
-        std::vector<std::shared_ptr<Vertex<VData>>> for_detected_vertices{ v1, v2, v4 };
-        std::unordered_set<std::shared_ptr<HalfEdge<VData>>> prohibited_edges{ e1, e2, e3, e4, e5, e6 };
-        std::shared_ptr<Vertex<VData>> prohibited_vertex = v3;
-        for (auto for_detected_edge : for_detected_edges)
-        {
-            auto for_detected_edge_iter = for_detected_edge;
-            do
-            {
-                if (prohibited_edges.contains(for_detected_edge_iter))
-                {
-                    throw std::exception("prohibited edges detected!");
-                }
-                if (for_detected_edge_iter->vertex == v3)
-                {
-                    throw std::exception("prohibited vertex detected!");
-                }
-                for_detected_edge_iter = for_detected_edge_iter->next;
-            } while (for_detected_edge_iter != for_detected_edge);
-        }
-        for (auto for_detected_vertex : for_detected_vertices)
-        {
-            auto half_edge_temp_iter = for_detected_vertex->half_edge;
-            do
-            {
-                if (prohibited_edges.contains(half_edge_temp_iter))
-                {
-                    throw std::exception("prohibited edges detected!");
-                }
-                half_edge_temp_iter = half_edge_temp_iter->next;
-            } while (half_edge_temp_iter != for_detected_vertex->half_edge);
-        }
         visited_edges.emplace(e1);
         visited_edges.emplace(e2);
         visited_edges.emplace(e3);
@@ -1225,6 +1172,14 @@ void Mesh<VData>::edge_collapse(std::shared_ptr<HalfEdge<VData>> half_edge)
 
 }
 
+/**
+ * @brief copy faces around half edge, and test if the new collapsed faces will intersect the remain old faces
+ * 
+ * @tparam VData Vertex datatype
+ * @param half_edge: half edge to collapse
+ * @return true: find intersection
+ * @return false: don't find an intersection
+ */
 template <typename VData>
 bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VData>> half_edge)
 {
@@ -1261,23 +1216,11 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     v2->half_edge = e5_op;
     v4->half_edge = e6_op;
 
-    // auto [v2_upstream_vertices, v2_downstream_vertices] = v2->get_connected_vertices();
-    auto v2_opposite_half_edges = v2->get_opposite_half_edges();
-    std::vector<std::shared_ptr<Face<VData>>> duplicate_faces;
     // change edge that point to v3 to v2 (there exists a trap, see edge_collapse_with_duplicate.jpg under image directory, if vx->v3 and v2->vx, then after collapse, [vx, v2(origin v3), v4] and [v4, v2, vx] are same face but with different orientation, which is duplicate and should erase one of them(situation like this means it will already caused non manifoldness accur, so we can delete any one of them, here we delete v3, should also take care that before delete this face and edge, you should let opposite half edge's opposite to nullptr first))
     auto lambda_func1 = [&](decltype(v2->half_edge) in_edge, decltype(v2) vertex_point_to) -> bool {
         if (in_edge == e2 || in_edge == e6)
         {
             return false;
-        }
-        auto v3_opposite_half_edge = in_edge->next->next;
-        if (v2_opposite_half_edges.contains(v3_opposite_half_edge->opposite))
-        {
-            // duplicate detected
-            if (in_edge->face != f1 && in_edge->face != f2)
-            {
-                duplicate_faces.emplace_back(in_edge->face);
-            }
         }
         in_edge->vertex = vertex_point_to;
         return true;
@@ -1293,36 +1236,6 @@ bool Mesh<VData>::edge_collapse_intersection_detect(std::shared_ptr<HalfEdge<VDa
     e3_op->opposite = e1_op;
     e5_op->opposite = e6_op;
     e6_op->opposite = e5_op;
-
-    for(auto duplicate_face: duplicate_faces)
-    {
-        auto half_edge_head = duplicate_face->half_edge;
-        auto half_edge_iter = half_edge_head;
-        std::vector<std::shared_ptr<HalfEdge<VData>>> half_edges_to_delete;
-        do
-        {
-            // change opposite half edge to nullptr first
-            half_edges_to_delete.emplace_back(half_edge_iter);
-            // if happen this, that means duplicate faces has connection, change one face affect another face, but because it's connected, so the another connected face will definitely delete its opposite
-            if (half_edge_iter->opposite != nullptr)
-            {
-                half_edge_iter->opposite->opposite = nullptr;
-            }
-            half_edge_iter = half_edge_iter->next;
-        } while (half_edge_iter != half_edge_head);
-        // then delete all the half edge
-        for (auto half_edge_to_delete : half_edges_to_delete)
-        {
-            half_edge_to_delete->face = nullptr;
-            half_edge_to_delete->next = nullptr;
-            half_edge_to_delete->prev = nullptr;
-            half_edge_to_delete->opposite = nullptr;
-            half_edge_to_delete->vertex = nullptr;
-        }
-        // then delete face
-        duplicate_face->half_edge = nullptr;
-        new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), duplicate_face), new_faces.end());
-    }
 
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f1), new_faces.end());
     new_faces.erase(std::remove(new_faces.begin(), new_faces.end(), f2), new_faces.end());
@@ -1480,6 +1393,31 @@ bool Mesh<VData>::is_manifold()
         else
         {
             connected_vertex_cache.emplace(connected_vertex, 1);
+        }
+    }
+    // duplicate face check
+    std::unordered_set<
+        std::unordered_set<std::shared_ptr<Vertex<VData>>>,
+        boost::hash<std::unordered_set<std::shared_ptr<Vertex<VData>>>>
+    > face_cache;
+    for(const auto& face: this->faces)
+    {
+        std::unordered_set<std::shared_ptr<Vertex<VData>>> face_vertice;
+        auto start_edge = face->half_edge;
+        auto iter_edge = start_edge;
+        do
+        {
+            // emplace all vertice to the face_vertice
+            face_vertice.emplace(iter_edge->vertex);
+            iter_edge = iter_edge->next;
+        } while (iter_edge != start_edge);
+        if (face_cache.contains(face_vertice))
+        {
+            return false;
+        }
+        else
+        {
+            face_cache.emplace(face_vertice);
         }
     }
     return true;

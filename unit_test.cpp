@@ -2,7 +2,9 @@
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    ::testing::GTEST_FLAG(filter) = "GlobalTest.draw_small_bunny";
+    ::testing::GTEST_FLAG(filter) = "GlobalTest.edge_collapse_small_bunny";
+    // ::testing::GTEST_FLAG(filter) = "GlobalTest.mc33_bunny_test";
+    // ::testing::GTEST_FLAG(filter) = "GlobalTest.draw_small_bunny";
     // ::testing::GTEST_FLAG(filter) = "GlobalTest.edge_collapse_small_bunny";
     // ::testing::GTEST_FLAG(filter) = "GlobalTest.line_segment_intersection";
      //::testing::GTEST_FLAG(filter) = "GlobalTest.mesh_copy_faces";
