@@ -1006,8 +1006,8 @@ void Mesh<VData>::edge_collapse(int collapse_times)
     std::cout << "after sort" << std::endl;
     for (int i = 0; i < collapse_times; i++)
     {
-        printProgress(double(i) / double(collapse_times - 1));
-        // std::cout << i << "/" << collapse_times - 1 << std::endl;
+        // printProgress(double(i) / double(collapse_times - 1));
+        std::cout << i << "/" << collapse_times - 1 << std::endl;
         // get half edge of max metrics
         std::shared_ptr<HalfEdge<VData>> half_edge;
         for (int j = 0; j < this->half_edges.size(); j++)

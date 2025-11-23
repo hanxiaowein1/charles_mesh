@@ -14,6 +14,7 @@ project(charles_mesh)
 
 if(BUILD_UNIT_TEST)
     find_package(PkgConfig REQUIRED)
+    find_package(Eigen3 REQUIRED)
     pkg_check_modules(gmp REQUIRED IMPORTED_TARGET gmp)
     # target_link_libraries(hello_world PkgConfig::gmp)
 
@@ -42,6 +43,7 @@ if(BUILD_UNIT_TEST)
     )
     target_link_libraries(${PROJECT_NAME}_test GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional triangles_shower::triangles_shower)
     SET_TARGET_PROPERTIES(${PROJECT_NAME}_test PROPERTIES LINK_FLAGS "/PROFILE")
+    target_include_directories(${PROJECT_NAME}_test PRIVATE ${Eigen3_INCLUDE_DIRS})
 endif()
 
 
@@ -82,6 +84,7 @@ if(BUILD_MESH_PROCESSING_VISUALIZATION_TOOL)
     find_package(triangles_shower)
     find_package(Qt5 REQUIRED COMPONENTS Widgets)
     find_package(marching_cubes_33)
+    find_package(Eigen3 REQUIRED)
     add_executable(
         mesh_processing_tool
         mesh_processing_visualization_tool.cpp
@@ -98,6 +101,7 @@ if(BUILD_MESH_PROCESSING_VISUALIZATION_TOOL)
     target_link_libraries(mesh_processing_tool Qt5::Widgets triangles_shower::triangles_shower GTest::gtest GTest::gmock PkgConfig::gmp symengine hello_symengine::hello_symengine Boost::functional marching_cubes_33::marching_cubes_33)
     # Deploy triangle_shower's config files to executable directory
     triangles_shower_deploy_config_files(mesh_processing_tool)
+    target_include_directories(mesh_processing_tool PRIVATE ${Eigen3_INCLUDE_DIRS})
 endif()
 
 

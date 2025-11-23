@@ -6,11 +6,39 @@
 #include <symengine/add.h>
 #include <symengine/matrix.h>
 #include <symengine/integer.h>
+#include <Eigen/Dense>
 
 #include "quadric_error_metrics.h"
 #include "charles_symengine_common.h"
+#include "unit_test.h"
 
 std::tuple<double, double, double, double> quadric_error_metrics(
+    const std::vector<std::tuple<double, double, double, double>>& planes
+)
+{
+    Eigen::Vector3d b = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d A = Eigen::Matrix3d::Zero();
+    double min_val = 0.0f;
+    for(auto plane: planes)
+    {
+        Eigen::Vector3d temp_v;
+        temp_v << std::get<0>(plane)
+            ,std::get<1>(plane)
+            ,std::get<2>(plane);
+        Eigen::Matrix3d temp_A = temp_v * temp_v.transpose();
+        A = A + temp_A;
+
+        temp_v = 2 * std::get<3>(plane) * temp_v;
+        b = b + temp_v;
+
+        min_val = min_val + std::get<3>(plane) * std::get<3>(plane);
+    }
+    auto x_min = -0.5f * A.ldlt().solve(b);
+    min_val = x_min.dot(A * x_min) + b.dot(x_min) + min_val;
+    return {x_min.x(), x_min.y(), x_min.z(), min_val};
+}
+
+std::tuple<double, double, double, double> quadric_error_metrics_deprecate(
     const std::vector<std::tuple<double, double, double, double>>& planes
 )
 {
@@ -49,4 +77,23 @@ std::tuple<double, double, double, double> quadric_error_metrics(
     return {axis_value_x, axis_value_y, axis_value_z, metrics};
     // return metrics;
     // return std::make_tuple(axis_value_x, axis_value_y, axis_value_z);
+}
+
+// passed
+TEST(GlobalTest, eigen_quadric_solver_test)
+{
+    std::vector<std::tuple<double, double, double, double>> coefficients = {
+        {1,2,3,1},
+        {1,1,1,2},
+        {3,8,7,3},
+        {7,5,13,21},
+    };
+    auto ret1 = quadric_error_metrics(coefficients);
+    auto ret2 = quadric_error_metrics_deprecate(coefficients);
+    ASSERT_EQ(true, std::abs(std::get<0>(ret1) - std::get<0>(ret2)) < 0.000001f);
+    ASSERT_EQ(true, std::abs(std::get<1>(ret1) - std::get<1>(ret2)) < 0.000001f);
+    ASSERT_EQ(true, std::abs(std::get<2>(ret1) - std::get<2>(ret2)) < 0.000001f);
+    std::cout << std::get<3>(ret1) << std::endl;
+    std::cout << std::get<3>(ret2) << std::endl;
+    ASSERT_EQ(true, std::abs(std::get<3>(ret1) - std::get<3>(ret2)) < 0.000001f);
 }

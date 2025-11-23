@@ -376,13 +376,13 @@ TEST(GlobalTest, mesh_save_obj)
 
 TEST(GlobalTest, edge_collapse_small_bunny)
 {
-    //std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
-    std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
+    std::string bunny_obj_src_path = "D:\\PHD\\Projects\\DevelopApp\\DevelopApp\\model\\Bunny.obj";
+    //std::string small_bunny = "C:\\Users\\hanxi\\Downloads\\simplify_Bunny3.obj";
     ObjMeshIO obj_mesh_io;
-    auto mesh = obj_mesh_io.load_mesh(small_bunny);
+    auto mesh = obj_mesh_io.load_mesh(bunny_obj_src_path);
     //obj_mesh_io.save_mesh("./", "small_bunny", mesh);
     //mesh->edge_collapse();
-    mesh->edge_collapse(10);
+    mesh->edge_collapse(1);
     mesh->save_obj("./", "collapse_small_bunny");
 }
 
