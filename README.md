@@ -71,6 +71,33 @@ void edge_collapse(int collapse_times = 10);
 **Notice** that current mesh simplication is extremely **slow**. Previously I used Eigen to replace symengine to solve multivariable extream problems, it helped to speed up 18x times(**MATH IS FASCINATING**) to solve QEM problem. But after this, we still encountered another efficiency bottleneck, which is the bvh tree. It will be called a greate many times, we are working on it and see if there is a good algorithm to cut the call times of it or just speed up its own speed.
 ## Bvh tree
 We provide bvh tree structure to speed up the intersection detection. This code can be found in the file charles_bvh.h.
+
+# Output Examples
+<style>
+.image-container {
+  display: inline-block; /* or block depending on your layout */
+  text-align: center;
+}
+
+.image-caption {
+  margin-top: 8px;
+  text-align: center;
+  font-style: italic;
+  color: #666;
+}
+</style>
+<figure class="image-container">
+  <div>
+    <img src="image/origin_bunny.png" style="width: 50%; height: auto;"/>
+    <img src="image/origin_bunny_info.png" style="width: 30%; height: auto;"/>
+  </div>
+
+  <br>
+  <img src="image/simplified_bunny.png" style="width: 50%; height: auto;"/>
+  <img src="image/simplified_bunny_info.png" style="width: 30%; height: auto;"/>
+  <figcaption class="image-caption">original bunny <b>VS</b> simplified bunny(10 edges are simplified)</figcaption>
+</figure>
+
 # Future Roadmap
 ```text
 laplacian;
