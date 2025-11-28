@@ -73,17 +73,16 @@ void edge_collapse(int collapse_times = 10);
 We provide bvh tree structure to speed up the intersection detection. This code can be found in the file charles_bvh.h.
 
 # Output Examples
-<figure style="display: inline-block; text-align: center">
-  <div>
-    <img src="image/origin_bunny.png" style="width: 50%; height: auto;"/>
-    <img src="image/origin_bunny_info.png" style="width: 30%; height: auto;"/>
-  </div>
 
-  <br>
-  <img src="image/simplified_bunny.png" style="width: 50%; height: auto;"/>
-  <img src="image/simplified_bunny_info.png" style="width: 30%; height: auto;"/>
-  <figcaption style=" margin-top: 8px; text-align: center; font-style: italic; color: #666;">original bunny <b>VS</b> simplified bunny(10 edges are simplified)</figcaption>
-</figure>
+| Original | Info |
+|:--------:|:----:|
+| ![Origin Bunny](image/origin_bunny.png) | ![Origin Info](image/origin_bunny_info.png) |
+
+| Simplified | Info |
+|:----------:|:----:|
+| ![Simplified Bunny](image/simplified_bunny.png) | ![Simplified Info](image/simplified_bunny_info.png) |
+
+*<p align="center">original bunny <b>VS</b> simplified bunny (10 edges are simplified)</p>*
 
 # Future Roadmap
 ```text
